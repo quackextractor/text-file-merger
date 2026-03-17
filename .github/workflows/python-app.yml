@@ -41,3 +41,76 @@ jobs:
         xvfb-run pytest
       env:
         PYTHONPATH: .
+
+  check-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.get_version.outputs.VERSION }}
+      is_new: ${{ steps.check_release.outputs.IS_NEW }}
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Get latest version from CHANGELOG
+      id: get_version
+      run: |
+        VERSION=$(grep -m 1 '^## \[' CHANGELOG.md | sed -E 's/## \[([^]]+)\].*/\1/')
+        echo "Found version: $VERSION"
+        echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
+    - name: Check if release already exists
+      id: check_release
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        if gh release view "v${{ steps.get_version.outputs.VERSION }}" > /dev/null 2>&1; then
+          echo "Release v${{ steps.get_version.outputs.VERSION }} already exists. Skipping."
+          echo "IS_NEW=false" >> $GITHUB_OUTPUT
+        else
+          echo "New version detected. Will create release v${{ steps.get_version.outputs.VERSION }}."
+          echo "IS_NEW=true" >> $GITHUB_OUTPUT
+        fi
+
+  release:
+    needs: [build, check-version]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && needs.check-version.outputs.is_new == 'true'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    permissions:
+      contents: write
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.10"
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pyinstaller
+
+    - name: Install xvfb (Linux Only)
+      if: matrix.os == 'ubuntu-latest'
+      run: sudo apt-get update && sudo apt-get install -y xvfb
+
+    - name: Build Executable (Windows)
+      if: matrix.os == 'windows-latest'
+      run: pyinstaller --noconsole --onefile --collect-all customtkinter --collect-data tkinterdnd2 --name TextMerger-Windows merge_texts.py
+
+    - name: Build Executable (Linux)
+      if: matrix.os == 'ubuntu-latest'
+      run: pyinstaller --noconsole --onefile --collect-all customtkinter --collect-data tkinterdnd2 --name TextMerger-Linux merge_texts.py
+
+    - name: Upload Release Assets
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: "v${{ needs.check-version.outputs.version }}"
+        name: "Version ${{ needs.check-version.outputs.version }}"
+        files: |
+          dist/TextMerger-Windows.exe
+          dist/TextMerger-Linux
