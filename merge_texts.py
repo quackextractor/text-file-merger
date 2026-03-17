@@ -9,43 +9,60 @@ try:
 except ImportError:
     TkinterDnD = None
 
+
+DEFAULT_CONFIG = {
+    "output_file": "Mono.txt",
+    "output_dir": "out",
+    "ignored_dirs": [
+        "node_modules", "dist", "storage", ".idea", ".git",
+        "__pycache__", ".venv", "bin", "obj", "Debug", ".next"
+    ],
+    "ignored_files": [
+        "package-lock.json"
+    ],
+    "ignored_extensions": [
+        ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp",
+        ".ico", ".tiff", ".mp4", ".mp3", ".wav", ".ogg",
+        ".pdf", ".zip", ".tar", ".gz", ".rar", ".svg",
+        ".log", ".sln"
+    ],
+    "skip_css_if_no_ext": True
+}
+
+
+def load_config(config_path="config.json"):
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                return {**DEFAULT_CONFIG, **json.load(f)}
+        except Exception as e:
+            print(f"Error loading config: {e}")
+    return DEFAULT_CONFIG.copy()
+
+
 class MergeApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Text Merger GUI")
         self.root.geometry("600x450")
-        
+
         self.config_path = "config.json"
         self.history_path = "history.json"
-        self.config = self.load_config()
+        self.config = load_config(self.config_path)
         self.history = self.load_history()
 
         self.setup_ui()
 
-    def load_config(self):
-        # Default settings including the new output_dir option
-        default_config = {
-            "output_file": "Mono.txt",
-            "output_dir": "out",
-            "ignored_dirs": [],
-            "ignored_files": [],
-            "ignored_extensions": [],
-            "skip_css_if_no_ext": True
-        }
-        if os.path.exists(self.config_path):
-            try:
-                with open(self.config_path, "r", encoding="utf-8") as f:
-                    return {**default_config, **json.load(f)}
-            except Exception as e:
-                print(f"Error loading config: {e}")
-        return default_config
+    def reload_config(self):
+        self.config = load_config(self.config_path)
+        return self.config
 
     def load_history(self):
         if os.path.exists(self.history_path):
             try:
                 with open(self.history_path, "r", encoding="utf-8") as f:
                     return json.load(f)
-            except:
+            except Exception:
                 return {}
         return {}
 
@@ -82,7 +99,7 @@ class MergeApp:
 
         btn_frame = ttk.Frame(main_frame)
         btn_frame.pack(fill=tk.X, pady=20)
-        
+
         ttk.Button(btn_frame, text="Browse", command=self.browse_dir).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frame, text="Merge Files", command=self.run_merge).pack(side=tk.RIGHT, padx=5)
 
@@ -120,7 +137,7 @@ class MergeApp:
 
         try:
             # Refresh config to catch any manual changes to output_dir
-            self.config = self.load_config()
+            self.reload_config()
             merge_files(
                 directory=directory,
                 recursive=self.recursive_var.get(),
@@ -128,29 +145,13 @@ class MergeApp:
             )
             self.save_history(directory, output)
             self.update_combo_list()
-            
+
             out_folder = self.config.get("output_dir", "out")
             final_file_name = os.path.basename(output) if output else self.config.get("output_file", "Mono.txt")
             messagebox.showinfo("Success", f"Files merged into {out_folder}/{final_file_name}")
         except Exception as e:
             messagebox.showerror("Error", f"Merge failed: {e}")
 
-def load_config(config_path="config.json"):
-    default_config = {
-        "output_file": "Mono.txt",
-        "output_dir": "out",
-        "ignored_dirs": [],
-        "ignored_files": [],
-        "ignored_extensions": [],
-        "skip_css_if_no_ext": True
-    }
-    if os.path.exists(config_path):
-        try:
-            with open(config_path, "r", encoding="utf-8") as f:
-                return {**default_config, **json.load(f)}
-        except Exception as e:
-            print(f"Error loading config: {e}")
-    return default_config
 
 def merge_files(
     directory,
@@ -162,7 +163,7 @@ def merge_files(
 ):
     config = load_config()
     raw_out_path = output_file or config.get("output_file", "Mono.txt")
-    
+
     # Use configurable output directory
     out_dir = config.get("output_dir", "out")
     os.makedirs(out_dir, exist_ok=True)
@@ -233,6 +234,7 @@ def merge_files(
                     except Exception as e:
                         outfile.write(f"[Error reading file: {e}]\n")
                     outfile.write("\n")
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Merge files via CLI or GUI.")
