@@ -1,19 +1,24 @@
 # Text File Merger
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/quackextractor/text-file-merger)
+[![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)](https://github.com/quackextractor/text-file-merger)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 
 A powerful and user-friendly utility to merge multiple text-based files into a single document. Whether you are a developer consolidating source code or a writer organizing notes, this tool simplifies the process with both Command Line (CLI) and Graphical User (GUI) interfaces.
 
 ## Features
 
-- **Dual-Mode Interface**: Use it as a CLI tool for automation or a GUI for drag-and-drop simplicity.
-- **Drag & Drop Support**: Easily drop folders into the GUI to select the source directory.
+- **Modern Themed GUI**: Beautiful Interface powered by `CustomTkinter` for a sleek experience.
+- **Background Operations**: Non-blocking threading keeps the app responsive during heavy merges.
+- **Drag & Drop Support**: Drop folders to select your source directory with visual feedback.
+- **File Preview**: Dry-run mode allows you to see exactly which files will be merged.
+- **In-App Settings**: Configure ignored folders and extensions directly within the project.
+- **Output Management**: Explicitly choose your output directory and filename in the GUI.
+- **Progress Tracking**: Real-time progress bar and inline logs for continuous status updates.
 - **Recursive Merging**: Scan through nested directories to capture all relevant content.
-- **Smart Filtering**: Automatic exclusion of binary files, large directories (like `node_modules`), and specific extensions.
-- **Configurable**: Fully customize ignored files, directories, and output settings via `config.json`.
-- **History Tracking**: Remembers previously used output names for different directories.
+- **Smart Filtering**: Custom ignore lists for files, folders, and specific extensions.
+- **History Tracking**: Automatically remembers your previous configurations for quick access.
+- **CLI Mode**: Full-featured command-line support for advanced users and automation.
 
 ## Installation
 

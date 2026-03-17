@@ -31,6 +31,7 @@ DEFAULT_CONFIG = {
     "skip_css_if_no_ext": True
 }
 
+
 def load_config(config_path="config.json"):
     if os.path.exists(config_path):
         try:
@@ -39,6 +40,7 @@ def load_config(config_path="config.json"):
         except Exception as e:
             print(f"Error loading config: {e}")
     return DEFAULT_CONFIG.copy()
+
 
 class Tooltip:
     def __init__(self, widget, text):
@@ -64,6 +66,7 @@ class Tooltip:
         if self.tooltip_window:
             self.tooltip_window.destroy()
             self.tooltip_window = None
+
 
 class MergeApp:
     def __init__(self, root):
@@ -108,8 +111,9 @@ class MergeApp:
         src_lbl = ctk.CTkLabel(self.main_frame, text="Source Directory (Drag and Drop or Paste):")
         src_lbl.pack(anchor=tk.W)
         self.dir_var = tk.StringVar()
+
         self.dir_var.trace_add("write", self.on_dir_change)
-        
+
         dir_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
         dir_frame.pack(fill=tk.X, pady=(0, 10))
         self.dir_combo = ctk.CTkComboBox(dir_frame, variable=self.dir_var, values=list(self.history.keys()))
@@ -133,8 +137,9 @@ class MergeApp:
         # Row 3: Output Directory
         out_dir_lbl = ctk.CTkLabel(self.main_frame, text="Output Directory:")
         out_dir_lbl.pack(anchor=tk.W)
+
         self.out_dir_var = tk.StringVar(value=self.config.get("output_dir", "out"))
-        
+
         out_dir_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
         out_dir_frame.pack(fill=tk.X, pady=(0, 10))
         self.out_dir_entry = ctk.CTkEntry(out_dir_frame, textvariable=self.out_dir_var)
@@ -161,7 +166,8 @@ class MergeApp:
 
         ctk.CTkButton(btn_frame, text="Settings", width=80, command=self.open_settings).pack(side=tk.LEFT, padx=(0, 5))
         ctk.CTkButton(btn_frame, text="Preview", width=80, command=self.run_preview).pack(side=tk.LEFT, padx=5)
-        ctk.CTkButton(btn_frame, text="Cancel", width=80, fg_color="red", hover_color="darkred", command=self.cancel_operation).pack(side=tk.RIGHT, padx=(5, 0))
+        ctk.CTkButton(btn_frame, text="Cancel", width=80, fg_color="red",
+                      hover_color="darkred", command=self.cancel_operation).pack(side=tk.RIGHT, padx=(5, 0))
         ctk.CTkButton(btn_frame, text="Merge Files", width=100, command=self.run_merge).pack(side=tk.RIGHT, padx=5)
 
         # Progress Indicator
@@ -172,7 +178,7 @@ class MergeApp:
         # Inline Status Log
         self.log_text = ctk.CTkTextbox(self.main_frame, state=tk.DISABLED, height=150)
         self.log_text.pack(fill=tk.BOTH, expand=True)
-        
+
     def log_message(self, text):
         self.log_text.configure(state=tk.NORMAL)
         self.log_text.insert(tk.END, text + "\n")
@@ -279,12 +285,16 @@ class MergeApp:
         settings_win.geometry("450x450")
         settings_win.transient(self.root)
 
-        ctk.CTkLabel(settings_win, text="Ignored Directories (comma-separated):").pack(anchor=tk.W, padx=20, pady=(20, 5))
+        ctk.CTkLabel(settings_win, text="Ignored Directories (comma-separated):").pack(
+            anchor=tk.W, padx=20, pady=(20, 5)
+        )
         dirs_text = ctk.CTkTextbox(settings_win, height=100)
         dirs_text.pack(fill=tk.X, padx=20, pady=5)
         dirs_text.insert("1.0", ", ".join(self.config.get("ignored_dirs", [])))
 
-        ctk.CTkLabel(settings_win, text="Ignored Extensions (comma-separated):").pack(anchor=tk.W, padx=20, pady=(15, 5))
+        ctk.CTkLabel(settings_win, text="Ignored Extensions (comma-separated):").pack(
+            anchor=tk.W, padx=20, pady=(15, 5)
+        )
         exts_text = ctk.CTkTextbox(settings_win, height=100)
         exts_text.pack(fill=tk.X, padx=20, pady=5)
         exts_text.insert("1.0", ", ".join(self.config.get("ignored_extensions", [])))
@@ -294,7 +304,7 @@ class MergeApp:
             new_exts = [e.strip() for e in exts_text.get("1.0", tk.END).split(",") if e.strip()]
             self.config["ignored_dirs"] = new_dirs
             self.config["ignored_extensions"] = new_exts
-            
+
             try:
                 with open(self.config_path, "w", encoding="utf-8") as f:
                     json.dump(self.config, f, indent=2)
@@ -354,7 +364,7 @@ def merge_files(
             for root, dirs, files in os.walk(directory):
                 if cancel_check and cancel_check():
                     break
-                    
+
                 dirs[:] = [d for d in dirs if d not in ignore_set]
                 norm_parts = os.path.normpath(root).split(os.sep)
                 if any(part in ignore_set for part in norm_parts):
@@ -363,7 +373,7 @@ def merge_files(
                 for file in files:
                     if cancel_check and cancel_check():
                         break
-                        
+
                     if file in ignored_files:
                         continue
                     lower = file.lower()
@@ -371,11 +381,11 @@ def merge_files(
                         continue
                     if extension is None and skip_css and lower.endswith('.css'):
                         continue
-                        
+
                     if extension is None or lower.endswith(extension):
                         file_path = os.path.join(root, file)
                         rel_path = os.path.relpath(file_path, directory)
-                        
+
                         if dry_run:
                             if log_callback:
                                 log_callback(f"Would merge: {rel_path}")
@@ -395,7 +405,7 @@ def merge_files(
             for entry in os.listdir(directory):
                 if cancel_check and cancel_check():
                     break
-                    
+
                 if entry in ignored_files or entry in ignore_set:
                     continue
                 lower = entry.lower()
@@ -404,7 +414,7 @@ def merge_files(
                 file_path = os.path.join(directory, entry)
                 if extension is None and skip_css and lower.endswith('.css'):
                     continue
-                    
+
                 if os.path.isfile(file_path) and (extension is None or lower.endswith(extension)):
                     if dry_run:
                         if log_callback:
@@ -425,6 +435,7 @@ def merge_files(
         if outfile:
             outfile.close()
 
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Merge files via CLI or GUI.")
     parser.add_argument("directory", nargs="?", help="Directory to scan")
@@ -438,15 +449,15 @@ if __name__ == '__main__':
     if args.gui or not args.directory:
         ctk.set_appearance_mode("System")
         ctk.set_default_color_theme("blue")
-        
+
         if TkinterDnD:
             root = TkinterDnD.Tk()
             # A background fix so standard Tk matches CTk
             root.configure(bg=ctk.ThemeManager.theme["CTk"]["fg_color"][0])
         else:
             root = ctk.CTk()
-            
+
         app = MergeApp(root)
         root.mainloop()
     else:
-        merge_files(args.directory, args.extension, args.recursive, args.output)
+        merge_files(args.directory, args.extension, args.recursive, args.output)
