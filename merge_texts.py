@@ -23,8 +23,10 @@ class MergeApp:
         self.setup_ui()
 
     def load_config(self):
+        # Default settings including the new output_dir option
         default_config = {
             "output_file": "Mono.txt",
+            "output_dir": "out",
             "ignored_dirs": [],
             "ignored_files": [],
             "ignored_extensions": [],
@@ -117,6 +119,8 @@ class MergeApp:
             return
 
         try:
+            # Refresh config to catch any manual changes to output_dir
+            self.config = self.load_config()
             merge_files(
                 directory=directory,
                 recursive=self.recursive_var.get(),
@@ -125,14 +129,16 @@ class MergeApp:
             self.save_history(directory, output)
             self.update_combo_list()
             
+            out_folder = self.config.get("output_dir", "out")
             final_file_name = os.path.basename(output) if output else self.config.get("output_file", "Mono.txt")
-            messagebox.showinfo("Success", f"Files merged into out/{final_file_name}")
+            messagebox.showinfo("Success", f"Files merged into {out_folder}/{final_file_name}")
         except Exception as e:
             messagebox.showerror("Error", f"Merge failed: {e}")
 
 def load_config(config_path="config.json"):
     default_config = {
         "output_file": "Mono.txt",
+        "output_dir": "out",
         "ignored_dirs": [],
         "ignored_files": [],
         "ignored_extensions": [],
@@ -157,7 +163,8 @@ def merge_files(
     config = load_config()
     raw_out_path = output_file or config.get("output_file", "Mono.txt")
     
-    out_dir = "out"
+    # Use configurable output directory
+    out_dir = config.get("output_dir", "out")
     os.makedirs(out_dir, exist_ok=True)
     out_path = os.path.join(out_dir, os.path.basename(raw_out_path))
 

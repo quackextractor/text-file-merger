@@ -1,5 +1,6 @@
 {
   "output_file": "Mono.txt",
+  "output_dir": "out",
   "ignored_dirs": [
     "node_modules",
     "dist",
