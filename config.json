@@ -1,0 +1,26 @@
+{
+  "output_file": "Mono.txt",
+  "ignored_dirs": [
+    "node_modules",
+    "dist",
+    "storage",
+    ".idea",
+    ".git",
+    "__pycache__",
+    ".venv",
+    "bin",
+    "obj",
+    "Debug",
+    ".next"
+  ],
+  "ignored_files": [
+    "package-lock.json"
+  ],
+  "ignored_extensions": [
+    ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp",
+    ".ico", ".tiff", ".mp4", ".mp3", ".wav", ".ogg",
+    ".pdf", ".zip", ".tar", ".gz", ".rar", ".svg", 
+    ".log", ".sln"
+  ],
+  "skip_css_if_no_ext": true
+}

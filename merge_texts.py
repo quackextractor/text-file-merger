@@ -1,72 +1,66 @@
 #!/usr/bin/env python3
 import os
 import argparse
+import json
+
+def load_config(config_path="config.json"):
+    """Load configuration from a JSON file."""
+    default_config = {
+        "output_file": "Mono.txt",
+        "ignored_dirs": [],
+        "ignored_files": [],
+        "ignored_extensions": [],
+        "skip_css_if_no_ext": True
+    }
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                return {**default_config, **json.load(f)}
+        except Exception as e:
+            print(f"Error loading config: {e}")
+    return default_config
 
 def merge_files(
     directory,
     extension=None,
     recursive=False,
-    output_file="Mono.txt",
+    output_file=None,
     ignore_dirs=None,
     ignore_exts=None
 ):
-    """
-    Merge files from directory into one file. Each file's content is preceded by
-    a header containing its relative path.
+    config = load_config()
+    
+    # Finalize output filename
+    out_path = output_file or config.get("output_file", "Mono.txt")
 
-    Default behavior:
-    - Always ignores 'node_modules' and 'dist' directories (can be extended via --ignore-dirs).
-    - Always ignores 'package-lock.json' files.
-    - When no extension filter is provided, .css files are skipped by default.
-    - Added: Hardcoded extension ignore list for common binary formats.
-    """
-
-    default_ignored_dirs = {
-        'node_modules', 'dist', 'storage', '.idea',
-        '.git', '__pycache__', '.venv', 'bin', 'obj', 'Debug', '.next'
-    }
-
+    # Build directory ignore set
+    ignore_set = set(config.get("ignored_dirs", []))
     if ignore_dirs:
-        extra = []
         for entry in ignore_dirs:
-            if not entry:
-                continue
-            parts = [p.strip() for p in entry.split(',') if p.strip()]
-            extra.extend(parts)
-        ignore_set = default_ignored_dirs.union(set(extra))
-    else:
-        ignore_set = default_ignored_dirs
+            if entry:
+                parts = [p.strip() for p in entry.split(',') if p.strip()]
+                ignore_set.update(parts)
+
+    # Build extension ignore set
+    ignored_ext_set = set(config.get("ignored_extensions", []))
+    if ignore_exts:
+        for entry in ignore_exts:
+            if entry:
+                parts = [p.strip() for p in entry.split(',') if p.strip()]
+                for p in parts:
+                    ignored_ext_set.add(p if p.startswith('.') else f'.{p}')
+
+    ignored_files = set(config.get("ignored_files", []))
+    skip_css = config.get("skip_css_if_no_ext", True)
 
     if extension and not extension.startswith('.'):
         extension = f'.{extension}'
 
-    ignored_files = {'package-lock.json'}
-
-    # Hardcoded ignored extensions for stuff that cannot be merged as text
-    default_ignored_exts = {
-        '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp',
-        '.ico', '.tiff', '.mp4', '.mp3', '.wav', '.ogg',
-        '.pdf', '.zip', '.tar', '.gz', '.rar', '.svg', '.log', '.sln'
-    }
-
-    if ignore_exts:
-        extra_exts = []
-        for entry in ignore_exts:
-            if not entry:
-                continue
-            parts = [p.strip() for p in entry.split(',') if p.strip()]
-            extra_exts.extend(parts)
-        extra_exts = {e if e.startswith('.') else f'.{e}' for e in extra_exts}
-        ignored_ext_set = default_ignored_exts.union(extra_exts)
-    else:
-        ignored_ext_set = default_ignored_exts
-
-    with open(output_file, "w", encoding="utf-8") as outfile:
+    with open(out_path, "w", encoding="utf-8") as outfile:
         if recursive:
             for root, dirs, files in os.walk(directory):
-                for d in list(dirs):
-                    if d in ignore_set:
-                        dirs.remove(d)
+                # Prune directories in-place
+                dirs[:] = [d for d in dirs if d not in ignore_set]
 
                 norm_parts = os.path.normpath(root).split(os.sep)
                 if any(part in ignore_set for part in norm_parts):
@@ -80,7 +74,7 @@ def merge_files(
                     if any(lower.endswith(ext) for ext in ignored_ext_set):
                         continue
 
-                    if extension is None and lower.endswith('.css'):
+                    if extension is None and skip_css and lower.endswith('.css'):
                         continue
 
                     if extension is None or lower.endswith(extension):
@@ -104,7 +98,7 @@ def merge_files(
 
                 file_path = os.path.join(directory, entry)
 
-                if extension is None and lower.endswith('.css'):
+                if extension is None and skip_css and lower.endswith('.css'):
                     continue
 
                 if os.path.isfile(file_path) and (extension is None or lower.endswith(extension)):
@@ -125,7 +119,7 @@ if __name__ == '__main__':
         "extension",
         nargs="?",
         default=None,
-        help="Optional file extension to merge. When omitted .css files are skipped."
+        help="Optional file extension to merge."
     )
     parser.add_argument(
         "-r", "--recursive",
@@ -134,8 +128,8 @@ if __name__ == '__main__':
     )
     parser.add_argument(
         "-o", "--output",
-        default="Mono.txt",
-        help="Name of the output file"
+        default=None,
+        help="Name of the output file (overrides config)"
     )
     parser.add_argument(
         "--ignore-dirs",
@@ -147,7 +141,7 @@ if __name__ == '__main__':
         "--ignore-exts",
         nargs="*",
         default=None,
-        help="Extra file extensions to ignore. Supports comma separated entries."
+        help="Extra file extensions to ignore."
     )
 
     args = parser.parse_args()
