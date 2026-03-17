@@ -317,22 +317,7 @@ class MergeApp:
         ctk.CTkButton(settings_win, text="Save Settings", command=save_settings).pack(pady=20)
 
 
-def merge_files(
-    directory,
-    extension=None,
-    recursive=False,
-    output_file=None,
-    ignore_dirs=None,
-    ignore_exts=None,
-    cancel_check=None,
-    dry_run=False,
-    log_callback=None
-):
-    config = load_config()
-    raw_out_path = output_file or config.get("output_file", "Mono.txt")
-    out_dir = config.get("output_dir", "out")
-    out_path = os.path.join(out_dir, os.path.basename(raw_out_path))
-
+def _get_ignore_config(config, ignore_dirs, ignore_exts):
     ignore_set = set(config.get("ignored_dirs", []))
     if ignore_dirs:
         for entry in ignore_dirs:
@@ -349,6 +334,86 @@ def merge_files(
                     ignored_ext_set.add(p if p.startswith('.') else f'.{p}')
 
     ignored_files = set(config.get("ignored_files", []))
+    return ignore_set, ignored_ext_set, ignored_files
+
+
+def _is_file_included(filename, root, directory, extension, ignore_set, ignored_ext_set, ignored_files, skip_css):
+    if filename in ignored_files:
+        return False
+
+    lower = filename.lower()
+    if any(lower.endswith(ext) for ext in ignored_ext_set):
+        return False
+
+    if extension is None and skip_css and lower.endswith('.css'):
+        return False
+
+    if extension is not None and not lower.endswith(extension):
+        return False
+
+    # Check parent directories for recursive ignore
+    if root != directory:
+        rel_root = os.path.relpath(root, directory)
+        norm_parts = rel_root.split(os.sep)
+        if any(part in ignore_set for part in norm_parts):
+            return False
+
+    return True
+
+
+def _merge_recursive(directory, extension, ignore_set, ignored_ext_set, ignored_files, skip_css,
+                     cancel_check, dry_run, log_callback, outfile):
+    for root, dirs, files in os.walk(directory):
+        if cancel_check and cancel_check():
+            break
+
+        dirs[:] = [d for d in dirs if d not in ignore_set]
+        for file in files:
+            if cancel_check and cancel_check():
+                break
+
+            if _is_file_included(file, root, directory, extension, ignore_set,
+                                 ignored_ext_set, ignored_files, skip_css):
+                file_path = os.path.join(root, file)
+                rel_path = os.path.relpath(file_path, directory)
+                _merge_single_file(outfile, file_path, rel_path, dry_run, log_callback)
+
+
+def _merge_flat(directory, extension, ignore_set, ignored_ext_set, ignored_files, skip_css,
+                cancel_check, dry_run, log_callback, outfile):
+    for entry in os.listdir(directory):
+        if cancel_check and cancel_check():
+            break
+
+        if entry in ignore_set:
+            continue
+
+        full_path = os.path.join(directory, entry)
+        if not os.path.isfile(full_path):
+            continue
+
+        if _is_file_included(entry, directory, directory, extension, ignore_set,
+                             ignored_ext_set, ignored_files, skip_css):
+            _merge_single_file(outfile, full_path, entry, dry_run, log_callback)
+
+
+def merge_files(
+    directory,
+    extension=None,
+    recursive=False,
+    output_file=None,
+    ignore_dirs=None,
+    ignore_exts=None,
+    cancel_check=None,
+    dry_run=False,
+    log_callback=None
+):
+    config = load_config()
+    raw_out_path = output_file or config.get("output_file", "Mono.txt")
+    out_dir = config.get("output_dir", "out")
+    out_path = os.path.join(out_dir, os.path.basename(raw_out_path))
+
+    ignore_set, ignored_ext_set, ignored_files = _get_ignore_config(config, ignore_dirs, ignore_exts)
     skip_css = config.get("skip_css_if_no_ext", True)
 
     if extension and not extension.startswith('.'):
@@ -361,79 +426,32 @@ def merge_files(
             outfile = open(out_path, "w", encoding="utf-8")
 
         if recursive:
-            for root, dirs, files in os.walk(directory):
-                if cancel_check and cancel_check():
-                    break
-
-                dirs[:] = [d for d in dirs if d not in ignore_set]
-                norm_parts = os.path.normpath(root).split(os.sep)
-                if any(part in ignore_set for part in norm_parts):
-                    continue
-
-                for file in files:
-                    if cancel_check and cancel_check():
-                        break
-
-                    if file in ignored_files:
-                        continue
-                    lower = file.lower()
-                    if any(lower.endswith(ext) for ext in ignored_ext_set):
-                        continue
-                    if extension is None and skip_css and lower.endswith('.css'):
-                        continue
-
-                    if extension is None or lower.endswith(extension):
-                        file_path = os.path.join(root, file)
-                        rel_path = os.path.relpath(file_path, directory)
-
-                        if dry_run:
-                            if log_callback:
-                                log_callback(f"Would merge: {rel_path}")
-                        else:
-                            outfile.write(f"----- {rel_path} -----\n")
-                            try:
-                                with open(file_path, "r", encoding="utf-8") as infile:
-                                    outfile.write(infile.read())
-                                if log_callback:
-                                    log_callback(f"Merged: {rel_path}")
-                            except Exception as e:
-                                outfile.write(f"[Error reading file: {e}]\n")
-                                if log_callback:
-                                    log_callback(f"Error reading {rel_path}: {e}")
-                            outfile.write("\n")
+            _merge_recursive(directory, extension, ignore_set, ignored_ext_set, ignored_files,
+                             skip_css, cancel_check, dry_run, log_callback, outfile)
         else:
-            for entry in os.listdir(directory):
-                if cancel_check and cancel_check():
-                    break
-
-                if entry in ignored_files or entry in ignore_set:
-                    continue
-                lower = entry.lower()
-                if any(lower.endswith(ext) for ext in ignored_ext_set):
-                    continue
-                file_path = os.path.join(directory, entry)
-                if extension is None and skip_css and lower.endswith('.css'):
-                    continue
-
-                if os.path.isfile(file_path) and (extension is None or lower.endswith(extension)):
-                    if dry_run:
-                        if log_callback:
-                            log_callback(f"Would merge: {entry}")
-                    else:
-                        outfile.write(f"----- {entry} -----\n")
-                        try:
-                            with open(file_path, "r", encoding="utf-8") as infile:
-                                outfile.write(infile.read())
-                            if log_callback:
-                                log_callback(f"Merged: {entry}")
-                        except Exception as e:
-                            outfile.write(f"[Error reading file: {e}]\n")
-                            if log_callback:
-                                log_callback(f"Error reading {entry}: {e}")
-                        outfile.write("\n")
+            _merge_flat(directory, extension, ignore_set, ignored_ext_set, ignored_files,
+                        skip_css, cancel_check, dry_run, log_callback, outfile)
     finally:
         if outfile:
             outfile.close()
+
+
+def _merge_single_file(outfile, file_path, display_name, dry_run, log_callback):
+    if dry_run:
+        if log_callback:
+            log_callback(f"Would merge: {display_name}")
+    else:
+        outfile.write(f"----- {display_name} -----\n")
+        try:
+            with open(file_path, "r", encoding="utf-8") as infile:
+                outfile.write(infile.read())
+            if log_callback:
+                log_callback(f"Merged: {display_name}")
+        except Exception as e:
+            outfile.write(f"[Error reading file: {e}]\n")
+            if log_callback:
+                log_callback(f"Error reading {display_name}: {e}")
+        outfile.write("\n")
 
 
 if __name__ == '__main__':

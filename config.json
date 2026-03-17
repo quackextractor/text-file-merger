@@ -12,16 +12,33 @@
     "bin",
     "obj",
     "Debug",
-    ".next"
+    ".next",
+    "venv"
   ],
   "ignored_files": [
     "package-lock.json"
   ],
   "ignored_extensions": [
-    ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp",
-    ".ico", ".tiff", ".mp4", ".mp3", ".wav", ".ogg",
-    ".pdf", ".zip", ".tar", ".gz", ".rar", ".svg", 
-    ".log", ".sln"
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".bmp",
+    ".webp",
+    ".ico",
+    ".tiff",
+    ".mp4",
+    ".mp3",
+    ".wav",
+    ".ogg",
+    ".pdf",
+    ".zip",
+    ".tar",
+    ".gz",
+    ".rar",
+    ".svg",
+    ".log",
+    ".sln"
   ],
   "skip_css_if_no_ext": true
 }

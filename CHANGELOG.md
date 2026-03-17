@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-03-17
+
+### Fixed
+- **CI Test Failure**: Resolved `ModuleNotFoundError` in GitHub Actions by correctly setting `PYTHONPATH`.
+- **Code Complexity**: Refactored `merge_files` to reduce cyclomatic complexity (C901) and meeting linting standards.
+- **Linting**: Fixed long line (E501) violations in `merge_texts.py`.
+
 ## [1.1.0] - 2026-03-17
 
 ### Added
