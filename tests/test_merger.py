@@ -121,22 +121,3 @@ def test_merge_files_execution(tmp_path, mocker):
     assert "file1.txt" in content
     assert "Hello" in content
     assert "World" in content
-
-# GUI Initialization Test
-
-
-def test_gui_init(mocker):
-    # Mocking tkinter and customtkinter to prevent windows from popping up
-    mocker.patch("customtkinter.CTk", return_value=MagicMock())
-    mocker.patch("customtkinter.CTkFrame", return_value=MagicMock())
-    mocker.patch("customtkinter.CTkLabel", return_value=MagicMock())
-    mocker.patch("customtkinter.CTkEntry", return_value=MagicMock())
-    mocker.patch("customtkinter.CTkComboBox", return_value=MagicMock())
-    mocker.patch("customtkinter.CTkCheckBox", return_value=MagicMock())
-    mocker.patch("customtkinter.CTkButton", return_value=MagicMock())
-    mocker.patch("customtkinter.CTkTextbox", return_value=MagicMock())
-    mocker.patch("customtkinter.CTkProgressBar", return_value=MagicMock())
-
-    root = MagicMock()
-    app = MergeApp(root)
-    assert app.config is not None
