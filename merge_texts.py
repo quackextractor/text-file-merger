@@ -104,17 +104,22 @@ class MergeApp:
             print(f"Failed to save history: {e}")
 
     def setup_ui(self):
+        # Frame packed with 0 padding to ensure the window background is covered
         self.main_frame = ctk.CTkFrame(self.root)
-        self.main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        self.main_frame.pack(fill=tk.BOTH, expand=True, padx=0, pady=0)
+
+        # Inner content container with actual padding
+        content = ctk.CTkFrame(self.main_frame, fg_color="transparent")
+        content.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
 
         # Row 1: Source Directory
-        src_lbl = ctk.CTkLabel(self.main_frame, text="Source Directory (Drag and Drop or Paste):")
+        src_lbl = ctk.CTkLabel(content, text="Source Directory (Drag and Drop or Paste):")
         src_lbl.pack(anchor=tk.W, pady=(5, 2))
         self.dir_var = tk.StringVar()
 
         self.dir_var.trace_add("write", self.on_dir_change)
 
-        dir_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
+        dir_frame = ctk.CTkFrame(content, fg_color="transparent")
         dir_frame.pack(fill=tk.X, pady=(0, 10))
         self.dir_combo = ctk.CTkComboBox(dir_frame, variable=self.dir_var, values=list(self.history.keys()))
         self.dir_combo.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
@@ -127,58 +132,57 @@ class MergeApp:
             self.dir_combo.dnd_bind('<<DragLeave>>', self.on_drag_leave)
 
         # Row 2: Target Extensions
-        ext_lbl = ctk.CTkLabel(self.main_frame, text="Target Extensions (e.g., .py, .txt):")
+        ext_lbl = ctk.CTkLabel(content, text="Target Extensions (e.g., .py, .txt):")
         ext_lbl.pack(anchor=tk.W, pady=(5, 2))
         Tooltip(ext_lbl, "Leave blank to merge all allowed files.")
         self.ext_var = tk.StringVar()
-        self.ext_entry = ctk.CTkEntry(self.main_frame, textvariable=self.ext_var)
+        self.ext_entry = ctk.CTkEntry(content, textvariable=self.ext_var)
         self.ext_entry.pack(fill=tk.X, pady=(0, 10))
 
         # Row 3: Output Directory
-        out_dir_lbl = ctk.CTkLabel(self.main_frame, text="Output Directory:")
+        out_dir_lbl = ctk.CTkLabel(content, text="Output Directory:")
         out_dir_lbl.pack(anchor=tk.W, pady=(5, 2))
 
         self.out_dir_var = tk.StringVar(value=self.config.get("output_dir", "out"))
 
-        out_dir_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
+        out_dir_frame = ctk.CTkFrame(content, fg_color="transparent")
         out_dir_frame.pack(fill=tk.X, pady=(0, 10))
         self.out_dir_entry = ctk.CTkEntry(out_dir_frame, textvariable=self.out_dir_var)
         self.out_dir_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
         ctk.CTkButton(out_dir_frame, text="Browse", width=80, command=self.browse_out_dir).pack(side=tk.RIGHT)
 
         # Row 4: Output File Name
-        out_lbl = ctk.CTkLabel(self.main_frame, text="Output File Name:")
+        out_lbl = ctk.CTkLabel(content, text="Output File Name:")
         out_lbl.pack(anchor=tk.W, pady=(5, 2))
         self.out_var = tk.StringVar()
-        self.out_combo = ctk.CTkComboBox(self.main_frame, variable=self.out_var, values=[])
+        self.out_combo = ctk.CTkComboBox(content, variable=self.out_var, values=[])
         self.out_combo.pack(fill=tk.X, pady=(0, 15))
         self.update_combo_list()
 
         # Options
         self.recursive_var = tk.BooleanVar(value=True)
-        rec_chk = ctk.CTkCheckBox(self.main_frame, text="Recursive Search", variable=self.recursive_var)
+        rec_chk = ctk.CTkCheckBox(content, text="Recursive Search", variable=self.recursive_var)
         rec_chk.pack(anchor=tk.W, pady=(0, 15))
         Tooltip(rec_chk, "Include all folders inside the source directory")
 
         # Buttons
-        btn_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
+        btn_frame = ctk.CTkFrame(content, fg_color="transparent")
         btn_frame.pack(fill=tk.X, pady=(10, 10))
 
         ctk.CTkButton(btn_frame, text="Settings", width=80, command=self.open_settings).pack(side=tk.LEFT, padx=(0, 5))
         ctk.CTkButton(btn_frame, text="Preview", width=80, command=self.run_preview).pack(side=tk.LEFT, padx=5)
 
-        # Muted button color for integration with the dark theme
         ctk.CTkButton(btn_frame, text="Cancel", width=80, fg_color="#b71c1c",
                       hover_color="#7f0000", command=self.cancel_operation).pack(side=tk.RIGHT, padx=(5, 0))
         ctk.CTkButton(btn_frame, text="Merge Files", width=100, command=self.run_merge).pack(side=tk.RIGHT, padx=5)
 
         # Progress Indicator
-        self.progress = ctk.CTkProgressBar(self.main_frame, mode="indeterminate")
+        self.progress = ctk.CTkProgressBar(content, mode="indeterminate")
         self.progress.pack(fill=tk.X, pady=(10, 15))
         self.progress.set(0)
 
         # Inline Status Log
-        self.log_text = ctk.CTkTextbox(self.main_frame, state=tk.DISABLED, height=150)
+        self.log_text = ctk.CTkTextbox(content, state=tk.DISABLED, height=150)
         self.log_text.pack(fill=tk.BOTH, expand=True)
 
     def log_message(self, text):
@@ -351,7 +355,6 @@ def _is_file_included(filename, root, directory, extension, ignore_set, ignored_
     if extension is not None and not lower.endswith(extension):
         return False
 
-    # Check parent directories for recursive ignore
     if root != directory:
         rel_root = os.path.relpath(root, directory)
         norm_parts = rel_root.split(os.sep)
@@ -471,19 +474,16 @@ if __name__ == '__main__':
         if TkinterDnD:
             root = TkinterDnD.Tk()
 
-            # 1. Dynamically select background color based on the theme
+            # Use dynamic index: 1 for Dark, 0 for Light
             is_dark = ctk.get_appearance_mode() == "Dark"
-            bg_index = 1 if is_dark else 0
-            bg_color = ctk.ThemeManager.theme["CTk"]["fg_color"][bg_index]
-
-            # 2. Apply background and remove standard Tk highlight borders
+            bg_color = ctk.ThemeManager.theme["CTk"]["fg_color"][1 if is_dark else 0]
             root.configure(bg=bg_color, highlightthickness=0)
 
-            # 3. Fix the Windows Title Bar (Immersive Dark Mode)
+            # Fix Windows Title Bar (Immersive Dark Mode)
             if is_dark:
                 try:
                     import ctypes
-                    root.update()  # Required to ensure the window exists
+                    root.update()
                     hwnd = ctypes.windll.user32.GetParent(root.winfo_id())
                     rendering_policy = 20  # DWMWA_USE_IMMERSIVE_DARK_MODE
                     ctypes.windll.dwmapi.DwmSetWindowAttribute(
@@ -496,3 +496,5 @@ if __name__ == '__main__':
 
         app = MergeApp(root)
         root.mainloop()
+    else:
+        merge_files(args.directory, args.extension, args.recursive, args.output)
