@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.5] - 2026-03-18
+
+## Fixed
+Use current path as initialdir for directory dialogs
+
 ## [1.1.4] - 2026-03-18
 
 ## Fixed
