@@ -13,7 +13,9 @@
     "obj",
     "Debug",
     ".next",
-    "venv"
+    "venv",
+    ".pytest_cache",
+    "out"
   ],
   "ignored_files": [
     "package-lock.json"
@@ -40,5 +42,6 @@
     ".log",
     ".sln"
   ],
-  "skip_css_if_no_ext": true
+  "skip_css_if_no_ext": true,
+  "use_gitignore": true
 }

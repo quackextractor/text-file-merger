@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import sys
 import os
+import fnmatch
 import argparse
 import json
 import threading
@@ -44,7 +45,8 @@ def get_bundled_config():
             ".pdf", ".zip", ".tar", ".gz", ".rar", ".svg",
             ".log", ".sln"
         ],
-        "skip_css_if_no_ext": True
+        "skip_css_if_no_ext": True,
+        "use_gitignore": True
     }
 
 
@@ -59,6 +61,81 @@ def load_config(config_path="config.json"):
         except Exception as e:
             print(f"Error loading config: {e}")
     return DEFAULT_CONFIG.copy()
+
+
+class GitIgnoreFilter:
+    def __init__(self, base_dir):
+        self.base_dir = base_dir
+        self.rules_cache = {}
+
+    def _load_rules(self, directory):
+        if directory in self.rules_cache:
+            return self.rules_cache[directory]
+
+        rules = []
+        gitignore_path = os.path.join(directory, '.gitignore')
+        if os.path.exists(gitignore_path):
+            try:
+                with open(gitignore_path, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith('#'):
+                            rules.append(line)
+            except Exception:
+                pass
+        self.rules_cache[directory] = rules
+        return rules
+
+    def is_ignored(self, file_or_dir_path, is_dir):
+        rel_path = os.path.relpath(file_or_dir_path, self.base_dir)
+        if rel_path == '.':
+            return False
+
+        current_dir = file_or_dir_path if is_dir else os.path.dirname(file_or_dir_path)
+        
+        chain = []
+        tmp = current_dir
+        while True:
+            chain.insert(0, tmp)
+            if tmp == self.base_dir or tmp == os.path.dirname(tmp):
+                break
+            tmp = os.path.dirname(tmp)
+
+        is_ignored_flag = False
+        
+        for path_context in chain:
+            rules = self._load_rules(path_context)
+            if not rules:
+                continue
+
+            rel_to_context = os.path.relpath(file_or_dir_path, path_context).replace(os.sep, '/')
+            name = os.path.basename(file_or_dir_path)
+
+            for rule in rules:
+                negate = rule.startswith('!')
+                clean_rule = rule[1:] if negate else rule
+                
+                rule_is_dir = clean_rule.endswith('/')
+                if rule_is_dir:
+                    clean_rule = clean_rule[:-1]
+
+                if not is_dir and rule_is_dir:
+                    continue
+                
+                matched = False
+                if '/' in clean_rule.strip('/'):
+                    match_pattern = clean_rule.lstrip('/')
+                    if fnmatch.fnmatch(rel_to_context, match_pattern) or fnmatch.fnmatch(rel_to_context, match_pattern + '/*'):
+                        matched = True
+                else:
+                    rule_pattern = clean_rule.lstrip('/')
+                    if fnmatch.fnmatch(name, rule_pattern) or fnmatch.fnmatch(rel_to_context, rule_pattern + '/*'):
+                        matched = True
+                        
+                if matched:
+                    is_ignored_flag = not negate
+
+        return is_ignored_flag
 
 
 class Tooltip:
@@ -172,8 +249,13 @@ class MergeApp:
 
         self.recursive_var = tk.BooleanVar(value=True)
         rec_chk = ctk.CTkCheckBox(content, text="Recursive Search", variable=self.recursive_var)
-        rec_chk.pack(anchor=tk.W, pady=(0, 15))
+        rec_chk.pack(anchor=tk.W, pady=(0, 5))
         Tooltip(rec_chk, "Include all folders inside the source directory")
+
+        self.gitignore_var = tk.BooleanVar(value=self.config.get("use_gitignore", True))
+        git_chk = ctk.CTkCheckBox(content, text="Use .gitignore rules", variable=self.gitignore_var)
+        git_chk.pack(anchor=tk.W, pady=(0, 15))
+        Tooltip(git_chk, "Automatically read and apply .gitignore files found in directories")
 
         btn_frame = ctk.CTkFrame(content, fg_color="transparent")
         btn_frame.pack(fill=tk.X, pady=(10, 10))
@@ -230,6 +312,11 @@ class MergeApp:
         if path in self.history:
             self.out_var.set(self.history[path])
         else:
+            if path:
+                base = os.path.basename(os.path.normpath(path))
+                if base:
+                    self.out_var.set(f"{base}.txt")
+                    return
             self.out_var.set(self.config.get("output_file", "Mono.txt"))
 
     def update_combo_list(self):
@@ -269,22 +356,34 @@ class MergeApp:
             directory = self.dir_var.get()
             ext = self.ext_var.get().strip() or None
             recursive = self.recursive_var.get()
+            use_gitignore = self.gitignore_var.get()
 
             ignore_set, ignored_ext_set, ignored_files = _get_ignore_config(self.config, None, None)
             skip_css = self.config.get("skip_css_if_no_ext", True)
+            git_filter = GitIgnoreFilter(directory) if use_gitignore else None
 
             work_list = []
             if recursive:
                 for root, dirs, files in os.walk(directory):
+                    if git_filter:
+                        dirs[:] = [d for d in dirs if not git_filter.is_ignored(os.path.join(root, d), is_dir=True)]
+                        
                     dirs[:] = [d for d in dirs if d not in ignore_set]
                     for f in files:
+                        f_path = os.path.join(root, f)
+                        if git_filter and git_filter.is_ignored(f_path, is_dir=False):
+                            continue
+                        
                         if _is_file_included(f, root, directory, ext, ignore_set,
                                              ignored_ext_set, ignored_files, skip_css):
-                            work_list.append(os.path.join(root, f))
+                            work_list.append(f_path)
             else:
                 for f in os.listdir(directory):
                     f_path = os.path.join(directory, f)
                     if os.path.isfile(f_path):
+                        if git_filter and git_filter.is_ignored(f_path, is_dir=False):
+                            continue
+                            
                         if _is_file_included(f, directory, directory, ext, ignore_set,
                                              ignored_ext_set, ignored_files, skip_css):
                             work_list.append(f_path)
@@ -308,7 +407,8 @@ class MergeApp:
                 cancel_check=lambda: self.cancel_flag,
                 dry_run=dry_run,
                 log_callback=self.log_message,
-                item_callback=progress_callback
+                item_callback=progress_callback,
+                use_gitignore=use_gitignore
             )
 
             if self.cancel_flag:
@@ -404,19 +504,25 @@ def _is_file_included(filename, root, directory, extension, ignore_set, ignored_
 
 
 def _merge_recursive(directory, extension, ignore_set, ignored_ext_set, ignored_files, skip_css,
-                     cancel_check, dry_run, log_callback, outfile, item_callback=None):
+                     cancel_check, dry_run, log_callback, outfile, item_callback=None, git_filter=None):
     for root, dirs, files in os.walk(directory):
         if cancel_check and cancel_check():
             break
+            
+        if git_filter:
+            dirs[:] = [d for d in dirs if not git_filter.is_ignored(os.path.join(root, d), is_dir=True)]
 
         dirs[:] = [d for d in dirs if d not in ignore_set]
         for file in files:
             if cancel_check and cancel_check():
                 break
 
+            file_path = os.path.join(root, file)
+            if git_filter and git_filter.is_ignored(file_path, is_dir=False):
+                continue
+
             if _is_file_included(file, root, directory, extension, ignore_set,
                                  ignored_ext_set, ignored_files, skip_css):
-                file_path = os.path.join(root, file)
                 rel_path = os.path.relpath(file_path, directory)
                 _merge_single_file(outfile, file_path, rel_path, dry_run, log_callback)
                 if item_callback:
@@ -424,7 +530,7 @@ def _merge_recursive(directory, extension, ignore_set, ignored_ext_set, ignored_
 
 
 def _merge_flat(directory, extension, ignore_set, ignored_ext_set, ignored_files, skip_css,
-                cancel_check, dry_run, log_callback, outfile, item_callback=None):
+                cancel_check, dry_run, log_callback, outfile, item_callback=None, git_filter=None):
     for entry in os.listdir(directory):
         if cancel_check and cancel_check():
             break
@@ -434,6 +540,9 @@ def _merge_flat(directory, extension, ignore_set, ignored_ext_set, ignored_files
 
         full_path = os.path.join(directory, entry)
         if not os.path.isfile(full_path):
+            continue
+            
+        if git_filter and git_filter.is_ignored(full_path, is_dir=False):
             continue
 
         if _is_file_included(entry, directory, directory, extension, ignore_set,
@@ -453,7 +562,8 @@ def merge_files(
     cancel_check=None,
     dry_run=False,
     log_callback=None,
-    item_callback=None
+    item_callback=None,
+    use_gitignore=True
 ):
     config = load_config()
     raw_out_path = output_file or config.get("output_file", "Mono.txt")
@@ -462,6 +572,7 @@ def merge_files(
 
     ignore_set, ignored_ext_set, ignored_files = _get_ignore_config(config, ignore_dirs, ignore_exts)
     skip_css = config.get("skip_css_if_no_ext", True)
+    git_filter = GitIgnoreFilter(directory) if use_gitignore else None
 
     if extension and not extension.startswith('.'):
         extension = f'.{extension}'
@@ -474,10 +585,10 @@ def merge_files(
 
         if recursive:
             _merge_recursive(directory, extension, ignore_set, ignored_ext_set, ignored_files,
-                             skip_css, cancel_check, dry_run, log_callback, outfile, item_callback)
+                             skip_css, cancel_check, dry_run, log_callback, outfile, item_callback, git_filter)
         else:
             _merge_flat(directory, extension, ignore_set, ignored_ext_set, ignored_files,
-                        skip_css, cancel_check, dry_run, log_callback, outfile, item_callback)
+                        skip_css, cancel_check, dry_run, log_callback, outfile, item_callback, git_filter)
     finally:
         if outfile:
             outfile.close()
@@ -508,6 +619,7 @@ if __name__ == '__main__':
     parser.add_argument("-r", "--recursive", action="store_true")
     parser.add_argument("-o", "--output", default=None)
     parser.add_argument("--gui", action="store_true", help="Force GUI mode")
+    parser.add_argument("--no-gitignore", action="store_true", help="Disable auto-reading of .gitignore files")
 
     args, unknown = parser.parse_known_args()
 
@@ -538,4 +650,4 @@ if __name__ == '__main__':
         app = MergeApp(root)
         root.mainloop()
     else:
-        merge_files(args.directory, args.extension, args.recursive, args.output)
+        merge_files(args.directory, args.extension, args.recursive, args.output, use_gitignore=not args.no_gitignore)
