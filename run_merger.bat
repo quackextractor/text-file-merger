@@ -22,6 +22,14 @@ if not exist %VENV_DIR% (
 echo Starting Merge Tool...
 python merge_texts.py
 
+:: Setup and run pre-commit
+echo.
+echo Setting up pre-commit hooks...
+pre-commit install
+
+echo Running pre-commit checks on all files...
+pre-commit run --all-files
+
 :: Deactivate on close
 call %VENV_DIR%\Scripts\deactivate
 pause

@@ -92,7 +92,7 @@ class GitIgnoreFilter:
             return False
 
         current_dir = file_or_dir_path if is_dir else os.path.dirname(file_or_dir_path)
-        
+
         chain = []
         tmp = current_dir
         while True:
@@ -102,7 +102,7 @@ class GitIgnoreFilter:
             tmp = os.path.dirname(tmp)
 
         is_ignored_flag = False
-        
+
         for path_context in chain:
             rules = self._load_rules(path_context)
             if not rules:
@@ -114,14 +114,14 @@ class GitIgnoreFilter:
             for rule in rules:
                 negate = rule.startswith('!')
                 clean_rule = rule[1:] if negate else rule
-                
+
                 rule_is_dir = clean_rule.endswith('/')
                 if rule_is_dir:
                     clean_rule = clean_rule[:-1]
 
                 if not is_dir and rule_is_dir:
                     continue
-                
+
                 matched = False
                 if '/' in clean_rule.strip('/'):
                     match_pattern = clean_rule.lstrip('/')
@@ -131,7 +131,7 @@ class GitIgnoreFilter:
                     rule_pattern = clean_rule.lstrip('/')
                     if fnmatch.fnmatch(name, rule_pattern) or fnmatch.fnmatch(rel_to_context, rule_pattern + '/*'):
                         matched = True
-                        
+
                 if matched:
                     is_ignored_flag = not negate
 
@@ -367,13 +367,13 @@ class MergeApp:
                 for root, dirs, files in os.walk(directory):
                     if git_filter:
                         dirs[:] = [d for d in dirs if not git_filter.is_ignored(os.path.join(root, d), is_dir=True)]
-                        
+
                     dirs[:] = [d for d in dirs if d not in ignore_set]
                     for f in files:
                         f_path = os.path.join(root, f)
                         if git_filter and git_filter.is_ignored(f_path, is_dir=False):
                             continue
-                        
+
                         if _is_file_included(f, root, directory, ext, ignore_set,
                                              ignored_ext_set, ignored_files, skip_css):
                             work_list.append(f_path)
@@ -383,7 +383,7 @@ class MergeApp:
                     if os.path.isfile(f_path):
                         if git_filter and git_filter.is_ignored(f_path, is_dir=False):
                             continue
-                            
+
                         if _is_file_included(f, directory, directory, ext, ignore_set,
                                              ignored_ext_set, ignored_files, skip_css):
                             work_list.append(f_path)
@@ -508,7 +508,7 @@ def _merge_recursive(directory, extension, ignore_set, ignored_ext_set, ignored_
     for root, dirs, files in os.walk(directory):
         if cancel_check and cancel_check():
             break
-            
+
         if git_filter:
             dirs[:] = [d for d in dirs if not git_filter.is_ignored(os.path.join(root, d), is_dir=True)]
 
@@ -541,7 +541,7 @@ def _merge_flat(directory, extension, ignore_set, ignored_ext_set, ignored_files
         full_path = os.path.join(directory, entry)
         if not os.path.isfile(full_path):
             continue
-            
+
         if git_filter and git_filter.is_ignored(full_path, is_dir=False):
             continue
 
