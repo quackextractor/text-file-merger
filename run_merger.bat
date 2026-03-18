@@ -18,10 +18,6 @@ if not exist %VENV_DIR% (
     pip install -r requirements-dev.txt
 )
 
-:: Launch the script
-echo Starting Merge Tool...
-python merge_texts.py
-
 :: Setup and run pre-commit
 echo.
 echo Setting up pre-commit hooks...
@@ -29,6 +25,10 @@ pre-commit install
 
 echo Running pre-commit checks on all files...
 pre-commit run --all-files
+
+:: Launch the script
+echo Starting Merge Tool...
+python merge_texts.py
 
 :: Deactivate on close
 call %VENV_DIR%\Scripts\deactivate

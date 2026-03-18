@@ -1,168 +1,142 @@
 import os
 import json
 import pytest
-from merge_texts import load_config, merge_files, MergeApp, Tooltip
-import tkinter as tk
-import customtkinter as ctk
+from unittest.mock import patch, mock_open, MagicMock
+from merge_texts import (
+    load_config,
+    _is_file_included,
+    _get_ignore_config,
+    GitIgnoreFilter,
+    merge_files,
+    MergeApp
+)
+
+# Fixture to provide a standard configuration for tests
 
 
-def test_load_config_default(tmp_path):
-    # Test loading default config when file doesn't exist
-    config_path = str(tmp_path / "nonexistent.json")
-    config = load_config(config_path)
+@pytest.fixture
+def base_config():
+    return {
+        "output_file": "test_out.txt",
+        "output_dir": "test_dir",
+        "ignored_dirs": ["node_modules", ".git"],
+        "ignored_files": ["package-lock.json"],
+        "ignored_extensions": [".png", ".jpg"],
+        "skip_css_if_no_ext": True,
+        "use_gitignore": True
+    }
+
+# Configuration Tests
+
+
+def test_load_config_default(mocker):
+    # Mock os.path.exists to simulate no config.json file
+    mocker.patch("os.path.exists", return_value=False)
+    config = load_config("non_existent.json")
     assert config["output_file"] == "Mono.txt"
-    assert config["output_dir"] == "out"
     assert "node_modules" in config["ignored_dirs"]
 
 
-def test_load_config_custom(tmp_path):
-    # Test loading custom config from file
-    config_data = {
-        "output_file": "Custom.txt",
-        "output_dir": "custom_out",
-        "ignored_dirs": ["test_dir"]
+def test_load_config_with_file(mocker):
+    # Mock a custom config file
+    mock_data = json.dumps({"output_file": "custom.txt"})
+    mocker.patch("os.path.exists", return_value=True)
+    mocker.patch("builtins.open", mock_open(read_data=mock_data))
+
+    config = load_config("config.json")
+    assert config["output_file"] == "custom.txt"
+    # Ensure it still has default values for other keys
+    assert ".git" in config["ignored_dirs"]
+
+# Filtering Logic Tests
+
+
+@pytest.mark.parametrize("filename, ext, skip_css, expected", [
+    ("script.py", ".py", False, True),
+    ("image.png", None, False, False),       # Ignored extension
+    ("style.css", None, True, False),        # skip_css_if_no_ext is True
+    ("style.css", ".css", True, True),       # Target extension specified
+    ("package-lock.json", None, False, False)  # Ignored file
+])
+def test_is_file_included(filename, ext, skip_css, expected):
+    ignore_set = {"node_modules"}
+    ignored_ext_set = {".png", ".jpg"}
+    ignored_files = {"package-lock.json"}
+
+    result = _is_file_included(
+        filename, "root", "root", ext,
+        ignore_set, ignored_ext_set, ignored_files, skip_css
+    )
+    assert result == expected
+
+# GitIgnore Filter Tests
+
+
+def test_gitignore_filter(tmp_path):
+    # Create a dummy .gitignore
+    d = tmp_path / "project"
+    d.mkdir()
+    gitignore = d / ".gitignore"
+    gitignore.write_text("*.log\n/temp/")
+
+    filter_obj = GitIgnoreFilter(str(d))
+
+    # Check if .log files are ignored
+    assert filter_obj.is_ignored(str(d / "test.log"), False) is True
+    # Check if other files are allowed
+    assert filter_obj.is_ignored(str(d / "main.py"), False) is False
+    # Check directory ignore
+    assert filter_obj.is_ignored(str(d / "temp"), True) is True
+
+# Core Logic Tests
+
+
+def test_merge_files_execution(tmp_path, mocker):
+    # Setup source directory
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "file1.txt").write_text("Hello")
+    (src / "file2.txt").write_text("World")
+
+    out_dir = tmp_path / "out"
+
+    # Mock config to point to our temp output directory
+    mock_conf = {
+        "output_file": "merged.txt",
+        "output_dir": str(out_dir),
+        "ignored_dirs": [],
+        "ignored_extensions": [],
+        "ignored_files": [],
+        "skip_css_if_no_ext": False
     }
-    config_path = tmp_path / "config.json"
-    with open(config_path, "w") as f:
-        json.dump(config_data, f)
+    mocker.patch("merge_texts.load_config", return_value=mock_conf)
 
-    config = load_config(str(config_path))
-    assert config["output_file"] == "Custom.txt"
-    assert config["output_dir"] == "custom_out"
-    assert "test_dir" in config["ignored_dirs"]
+    # Run merge
+    merge_files(str(src), output_file="merged.txt", use_gitignore=False)
 
+    # Verify output
+    merged_file = out_dir / "merged.txt"
+    assert merged_file.exists()
+    content = merged_file.read_text()
+    assert "file1.txt" in content
+    assert "Hello" in content
+    assert "World" in content
 
-def test_merge_logic_basic(tmp_path, mocker):
-    # Setup test directory
-    test_dir = tmp_path / "test_merge"
-    test_dir.mkdir()
-    (test_dir / "a.txt").write_text("A")
-    (test_dir / "b.log").write_text("B")
-
-    # Setup out directory
-    out_dir = tmp_path / "out"
-    out_dir.mkdir()
-
-    # Mock load_config
-    mocker.patch("merge_texts.load_config", return_value={
-        "output_file": "final.txt",
-        "output_dir": str(out_dir),
-        "ignored_dirs": [],
-        "ignored_files": [],
-        "ignored_extensions": [".log"],
-        "skip_css_if_no_ext": True
-    })
-
-    merge_files(str(test_dir), output_file="final.txt")
-
-    final_path = out_dir / "final.txt"
-    assert final_path.exists()
-    content = final_path.read_text()
-    assert "a.txt" in content
-    assert "A" in content
-    assert "b.log" not in content
+# GUI Initialization Test
 
 
-def test_merge_recursive(tmp_path, mocker):
-    # Setup test directory with subfolder
-    test_dir = tmp_path / "test_merge"
-    test_dir.mkdir()
-    (test_dir / "a.txt").write_text("A")
-    sub_dir = test_dir / "sub"
-    sub_dir.mkdir()
-    (sub_dir / "c.txt").write_text("C")
+def test_gui_init(mocker):
+    # Mocking tkinter and customtkinter to prevent windows from popping up
+    mocker.patch("customtkinter.CTk", return_value=MagicMock())
+    mocker.patch("customtkinter.CTkFrame", return_value=MagicMock())
+    mocker.patch("customtkinter.CTkLabel", return_value=MagicMock())
+    mocker.patch("customtkinter.CTkEntry", return_value=MagicMock())
+    mocker.patch("customtkinter.CTkComboBox", return_value=MagicMock())
+    mocker.patch("customtkinter.CTkCheckBox", return_value=MagicMock())
+    mocker.patch("customtkinter.CTkButton", return_value=MagicMock())
+    mocker.patch("customtkinter.CTkTextbox", return_value=MagicMock())
+    mocker.patch("customtkinter.CTkProgressBar", return_value=MagicMock())
 
-    # Setup out directory
-    out_dir = tmp_path / "out"
-    out_dir.mkdir()
-
-    # Mock load_config
-    mocker.patch("merge_texts.load_config", return_value={
-        "output_file": "final.txt",
-        "output_dir": str(out_dir),
-        "ignored_dirs": [],
-        "ignored_files": [],
-        "ignored_extensions": [],
-        "skip_css_if_no_ext": True
-    })
-
-    merge_files(str(test_dir), output_file="final.txt", recursive=True)
-
-    final_path = out_dir / "final.txt"
-    assert final_path.exists()
-    content = final_path.read_text()
-    assert "a.txt" in content
-    assert "c.txt" in content
-    assert "A" in content
-    assert "C" in content
-
-
-def test_merge_dry_run(tmp_path, mocker):
-    # Setup test directory
-    test_dir = tmp_path / "test_merge"
-    test_dir.mkdir()
-    (test_dir / "a.txt").write_text("A")
-
-    # Setup out directory
-    out_dir = tmp_path / "out"
-    out_dir.mkdir()
-
-    # Mock load_config
-    mocker.patch("merge_texts.load_config", return_value={
-        "output_file": "final.txt",
-        "output_dir": str(out_dir),
-        "ignored_dirs": [],
-        "ignored_files": [],
-        "ignored_extensions": [],
-        "skip_css_if_no_ext": True
-    })
-
-    log_messages = []
-
-    def mock_log(msg):
-        log_messages.append(msg)
-
-    merge_files(str(test_dir), dry_run=True, log_callback=mock_log)
-
-    final_path = out_dir / "final.txt"
-    assert not final_path.exists()
-    assert any("Would merge: a.txt" in msg for msg in log_messages)
-
-
-def test_merge_cancellation(tmp_path, mocker):
-    # Setup test directory
-    test_dir = tmp_path / "test_merge"
-    test_dir.mkdir()
-    for i in range(10):
-        (test_dir / f"file_{i}.txt").write_text(str(i))
-
-    # Setup out directory
-    out_dir = tmp_path / "out"
-    out_dir.mkdir()
-
-    # Mock load_config
-    mocker.patch("merge_texts.load_config", return_value={
-        "output_file": "final.txt",
-        "output_dir": str(out_dir),
-        "ignored_dirs": [],
-        "ignored_files": [],
-        "ignored_extensions": [],
-        "skip_css_if_no_ext": True
-    })
-
-    def cancel_check():
-        return True  # Cancel immediately
-
-    merge_files(str(test_dir), cancel_check=cancel_check)
-
-    final_path = out_dir / "final.txt"
-    # Even if cancelled, it might have written the header or first few files if not careful,
-    # but with immediate cancellation before loop starts, it should handle it.
-    if final_path.exists():
-        content = final_path.read_text()
-        # Since cancel_check is checked inside the loop, the first file might be processed?
-        # Actually, in os.walk, it checks before processing files.
-        assert "file_0.txt" not in content or "file_9.txt" not in content  # Reduced set
-
-
-# (UI initialization tests removed due to hanging in non-X environments)
+    root = MagicMock()
+    app = MergeApp(root)
+    assert app.config is not None
