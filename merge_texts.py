@@ -15,12 +15,9 @@ except ImportError:
 
 
 def get_bundled_config():
-    """Load defaults from the bundled config.json if available."""
     try:
-        # PyInstaller creates a temp folder and stores the path in _MEIPASS
         base_path = sys._MEIPASS
     except AttributeError:
-        # Fallback for standard Python execution
         base_path = os.path.abspath(os.path.dirname(__file__))
 
     bundled_config_path = os.path.join(base_path, "config.json")
@@ -31,7 +28,6 @@ def get_bundled_config():
         except Exception as e:
             print(f"Error reading bundled config: {e}")
 
-    # Safe fallback matching original code in case the file is missing from the build
     return {
         "output_file": "Mono.txt",
         "output_dir": "out",
@@ -127,19 +123,15 @@ class MergeApp:
             print(f"Failed to save history: {e}")
 
     def setup_ui(self):
-        # Frame packed with 0 padding to ensure the window background is covered
         self.main_frame = ctk.CTkFrame(self.root)
         self.main_frame.pack(fill=tk.BOTH, expand=True, padx=0, pady=0)
 
-        # Inner content container with actual padding
         content = ctk.CTkFrame(self.main_frame, fg_color="transparent")
         content.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
 
-        # Row 1: Source Directory
         src_lbl = ctk.CTkLabel(content, text="Source Directory (Drag and Drop or Paste):")
         src_lbl.pack(anchor=tk.W, pady=(5, 2))
         self.dir_var = tk.StringVar()
-
         self.dir_var.trace_add("write", self.on_dir_change)
 
         dir_frame = ctk.CTkFrame(content, fg_color="transparent")
@@ -154,7 +146,6 @@ class MergeApp:
             self.dir_combo.dnd_bind('<<DragEnter>>', self.on_drag_enter)
             self.dir_combo.dnd_bind('<<DragLeave>>', self.on_drag_leave)
 
-        # Row 2: Target Extensions
         ext_lbl = ctk.CTkLabel(content, text="Target Extensions (e.g., .py, .txt):")
         ext_lbl.pack(anchor=tk.W, pady=(5, 2))
         Tooltip(ext_lbl, "Leave blank to merge all allowed files.")
@@ -162,10 +153,8 @@ class MergeApp:
         self.ext_entry = ctk.CTkEntry(content, textvariable=self.ext_var)
         self.ext_entry.pack(fill=tk.X, pady=(0, 10))
 
-        # Row 3: Output Directory
         out_dir_lbl = ctk.CTkLabel(content, text="Output Directory:")
         out_dir_lbl.pack(anchor=tk.W, pady=(5, 2))
-
         self.out_dir_var = tk.StringVar(value=self.config.get("output_dir", "out"))
 
         out_dir_frame = ctk.CTkFrame(content, fg_color="transparent")
@@ -174,7 +163,6 @@ class MergeApp:
         self.out_dir_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
         ctk.CTkButton(out_dir_frame, text="Browse", width=80, command=self.browse_out_dir).pack(side=tk.RIGHT)
 
-        # Row 4: Output File Name
         out_lbl = ctk.CTkLabel(content, text="Output File Name:")
         out_lbl.pack(anchor=tk.W, pady=(5, 2))
         self.out_var = tk.StringVar()
@@ -182,13 +170,11 @@ class MergeApp:
         self.out_combo.pack(fill=tk.X, pady=(0, 15))
         self.update_combo_list()
 
-        # Options
         self.recursive_var = tk.BooleanVar(value=True)
         rec_chk = ctk.CTkCheckBox(content, text="Recursive Search", variable=self.recursive_var)
         rec_chk.pack(anchor=tk.W, pady=(0, 15))
         Tooltip(rec_chk, "Include all folders inside the source directory")
 
-        # Buttons
         btn_frame = ctk.CTkFrame(content, fg_color="transparent")
         btn_frame.pack(fill=tk.X, pady=(10, 10))
 
@@ -199,12 +185,10 @@ class MergeApp:
                       hover_color="#7f0000", command=self.cancel_operation).pack(side=tk.RIGHT, padx=(5, 0))
         ctk.CTkButton(btn_frame, text="Merge Files", width=100, command=self.run_merge).pack(side=tk.RIGHT, padx=5)
 
-        # Progress Indicator
-        self.progress = ctk.CTkProgressBar(content, mode="indeterminate")
+        self.progress = ctk.CTkProgressBar(content, mode="determinate")
         self.progress.pack(fill=tk.X, pady=(10, 15))
         self.progress.set(0)
 
-        # Inline Status Log
         self.log_text = ctk.CTkTextbox(content, state=tk.DISABLED, height=150)
         self.log_text.pack(fill=tk.BOTH, expand=True)
 
@@ -273,38 +257,68 @@ class MergeApp:
         threading.Thread(target=self.execute_merge, args=(False,), daemon=True).start()
 
     def execute_merge(self, dry_run=False):
-        self.progress.start()
+        self.progress.set(0)
         self.cancel_flag = False
         mode_text = "Previewing" if dry_run else "Merging"
         self.log_message(f"Starting {mode_text}...")
 
         try:
             self.reload_config()
-            self.config["output_dir"] = self.out_dir_var.get()
+            directory = self.dir_var.get()
             ext = self.ext_var.get().strip() or None
+            recursive = self.recursive_var.get()
+
+            ignore_set, ignored_ext_set, ignored_files = _get_ignore_config(self.config, None, None)
+            skip_css = self.config.get("skip_css_if_no_ext", True)
+
+            work_list = []
+            if recursive:
+                for root, dirs, files in os.walk(directory):
+                    dirs[:] = [d for d in dirs if d not in ignore_set]
+                    for f in files:
+                        if _is_file_included(f, root, directory, ext, ignore_set,
+                                             ignored_ext_set, ignored_files, skip_css):
+                            work_list.append(os.path.join(root, f))
+            else:
+                for f in os.listdir(directory):
+                    f_path = os.path.join(directory, f)
+                    if os.path.isfile(f_path):
+                        if _is_file_included(f, directory, directory, ext, ignore_set,
+                                             ignored_ext_set, ignored_files, skip_css):
+                            work_list.append(f_path)
+
+            total_files = len(work_list)
+            if total_files == 0:
+                self.log_message("No files found to process.")
+                return
+
+            processed_count = [0]
+
+            def progress_callback():
+                processed_count[0] += 1
+                self.progress.set(processed_count[0] / total_files)
 
             merge_files(
-                directory=self.dir_var.get(),
+                directory=directory,
                 extension=ext,
-                recursive=self.recursive_var.get(),
+                recursive=recursive,
                 output_file=self.out_var.get(),
                 cancel_check=lambda: self.cancel_flag,
                 dry_run=dry_run,
-                log_callback=self.log_message
+                log_callback=self.log_message,
+                item_callback=progress_callback
             )
 
             if self.cancel_flag:
                 self.log_message("Operation Cancelled.")
             else:
                 if not dry_run:
-                    self.save_history(self.dir_var.get(), self.out_var.get())
+                    self.save_history(directory, self.out_var.get())
                     self.update_combo_list()
                 self.log_message("Merge completed successfully." if not dry_run else "Preview finished.")
 
         except Exception as e:
             self.log_message(f"Error: {e}")
-        finally:
-            self.progress.stop()
 
     def open_settings(self):
         settings_win = ctk.CTkToplevel(self.root)
@@ -388,7 +402,7 @@ def _is_file_included(filename, root, directory, extension, ignore_set, ignored_
 
 
 def _merge_recursive(directory, extension, ignore_set, ignored_ext_set, ignored_files, skip_css,
-                     cancel_check, dry_run, log_callback, outfile):
+                     cancel_check, dry_run, log_callback, outfile, item_callback=None):
     for root, dirs, files in os.walk(directory):
         if cancel_check and cancel_check():
             break
@@ -403,10 +417,12 @@ def _merge_recursive(directory, extension, ignore_set, ignored_ext_set, ignored_
                 file_path = os.path.join(root, file)
                 rel_path = os.path.relpath(file_path, directory)
                 _merge_single_file(outfile, file_path, rel_path, dry_run, log_callback)
+                if item_callback:
+                    item_callback()
 
 
 def _merge_flat(directory, extension, ignore_set, ignored_ext_set, ignored_files, skip_css,
-                cancel_check, dry_run, log_callback, outfile):
+                cancel_check, dry_run, log_callback, outfile, item_callback=None):
     for entry in os.listdir(directory):
         if cancel_check and cancel_check():
             break
@@ -421,6 +437,8 @@ def _merge_flat(directory, extension, ignore_set, ignored_ext_set, ignored_files
         if _is_file_included(entry, directory, directory, extension, ignore_set,
                              ignored_ext_set, ignored_files, skip_css):
             _merge_single_file(outfile, full_path, entry, dry_run, log_callback)
+            if item_callback:
+                item_callback()
 
 
 def merge_files(
@@ -432,7 +450,8 @@ def merge_files(
     ignore_exts=None,
     cancel_check=None,
     dry_run=False,
-    log_callback=None
+    log_callback=None,
+    item_callback=None
 ):
     config = load_config()
     raw_out_path = output_file or config.get("output_file", "Mono.txt")
@@ -453,10 +472,10 @@ def merge_files(
 
         if recursive:
             _merge_recursive(directory, extension, ignore_set, ignored_ext_set, ignored_files,
-                             skip_css, cancel_check, dry_run, log_callback, outfile)
+                             skip_css, cancel_check, dry_run, log_callback, outfile, item_callback)
         else:
             _merge_flat(directory, extension, ignore_set, ignored_ext_set, ignored_files,
-                        skip_css, cancel_check, dry_run, log_callback, outfile)
+                        skip_css, cancel_check, dry_run, log_callback, outfile, item_callback)
     finally:
         if outfile:
             outfile.close()
@@ -496,19 +515,16 @@ if __name__ == '__main__':
 
         if TkinterDnD:
             root = TkinterDnD.Tk()
-
-            # Use dynamic index: 1 for Dark, 0 for Light
             is_dark = ctk.get_appearance_mode() == "Dark"
             bg_color = ctk.ThemeManager.theme["CTk"]["fg_color"][1 if is_dark else 0]
             root.configure(bg=bg_color, highlightthickness=0)
 
-            # Fix Windows Title Bar (Immersive Dark Mode)
             if is_dark:
                 try:
                     import ctypes
                     root.update()
                     hwnd = ctypes.windll.user32.GetParent(root.winfo_id())
-                    rendering_policy = 20  # DWMWA_USE_IMMERSIVE_DARK_MODE
+                    rendering_policy = 20
                     ctypes.windll.dwmapi.DwmSetWindowAttribute(
                         hwnd, rendering_policy, ctypes.byref(ctypes.c_int(1)), 4
                     )
