@@ -470,12 +470,29 @@ if __name__ == '__main__':
 
         if TkinterDnD:
             root = TkinterDnD.Tk()
-            # A background fix so standard Tk matches CTk
-            root.configure(bg=ctk.ThemeManager.theme["CTk"]["fg_color"][0])
+
+            # 1. Dynamically select background color based on the theme
+            is_dark = ctk.get_appearance_mode() == "Dark"
+            bg_index = 1 if is_dark else 0
+            bg_color = ctk.ThemeManager.theme["CTk"]["fg_color"][bg_index]
+
+            # 2. Apply background and remove standard Tk highlight borders
+            root.configure(bg=bg_color, highlightthickness=0)
+
+            # 3. Fix the Windows Title Bar (Immersive Dark Mode)
+            if is_dark:
+                try:
+                    import ctypes
+                    root.update()  # Required to ensure the window exists
+                    hwnd = ctypes.windll.user32.GetParent(root.winfo_id())
+                    rendering_policy = 20  # DWMWA_USE_IMMERSIVE_DARK_MODE
+                    ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                        hwnd, rendering_policy, ctypes.byref(ctypes.c_int(1)), 4
+                    )
+                except Exception:
+                    pass
         else:
             root = ctk.CTk()
 
         app = MergeApp(root)
         root.mainloop()
-    else:
-        merge_files(args.directory, args.extension, args.recursive, args.output)
