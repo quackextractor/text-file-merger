@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import sys
 import os
 import argparse
 import json
@@ -12,24 +13,46 @@ try:
 except ImportError:
     TkinterDnD = None
 
-DEFAULT_CONFIG = {
-    "output_file": "Mono.txt",
-    "output_dir": "out",
-    "ignored_dirs": [
-        "node_modules", "dist", "storage", ".idea", ".git",
-        "__pycache__", ".venv", "bin", "obj", "Debug", ".next"
-    ],
-    "ignored_files": [
-        "package-lock.json"
-    ],
-    "ignored_extensions": [
-        ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp",
-        ".ico", ".tiff", ".mp4", ".mp3", ".wav", ".ogg",
-        ".pdf", ".zip", ".tar", ".gz", ".rar", ".svg",
-        ".log", ".sln"
-    ],
-    "skip_css_if_no_ext": True
-}
+
+def get_bundled_config():
+    """Load defaults from the bundled config.json if available."""
+    try:
+        # PyInstaller creates a temp folder and stores the path in _MEIPASS
+        base_path = sys._MEIPASS
+    except AttributeError:
+        # Fallback for standard Python execution
+        base_path = os.path.abspath(os.path.dirname(__file__))
+
+    bundled_config_path = os.path.join(base_path, "config.json")
+    if os.path.exists(bundled_config_path):
+        try:
+            with open(bundled_config_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"Error reading bundled config: {e}")
+
+    # Safe fallback matching original code in case the file is missing from the build
+    return {
+        "output_file": "Mono.txt",
+        "output_dir": "out",
+        "ignored_dirs": [
+            "node_modules", "dist", "storage", ".idea", ".git",
+            "__pycache__", ".venv", "bin", "obj", "Debug", ".next"
+        ],
+        "ignored_files": [
+            "package-lock.json"
+        ],
+        "ignored_extensions": [
+            ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp",
+            ".ico", ".tiff", ".mp4", ".mp3", ".wav", ".ogg",
+            ".pdf", ".zip", ".tar", ".gz", ".rar", ".svg",
+            ".log", ".sln"
+        ],
+        "skip_css_if_no_ext": True
+    }
+
+
+DEFAULT_CONFIG = get_bundled_config()
 
 
 def load_config(config_path="config.json"):

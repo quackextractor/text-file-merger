@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.3] - 2026-03-18
+
+## Fixed
+Include and load bundled config.json for build
+
 ## [1.1.2] - 2026-03-18
 
 ### Fixed

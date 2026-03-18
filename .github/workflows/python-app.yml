@@ -104,11 +104,11 @@ jobs:
 
     - name: Build Executable (Windows)
       if: matrix.os == 'windows-latest'
-      run: pyinstaller --noconsole --onefile --collect-all customtkinter --collect-data tkinterdnd2 --name TextMerger-Windows merge_texts.py
+      run: pyinstaller --noconsole --onefile --add-data "config.json;." --collect-all customtkinter --collect-data tkinterdnd2 --name TextMerger-Windows merge_texts.py
 
     - name: Build Executable (Linux)
       if: matrix.os == 'ubuntu-latest'
-      run: pyinstaller --noconsole --onefile --collect-all customtkinter --collect-data tkinterdnd2 --name TextMerger-Linux merge_texts.py
+      run: pyinstaller --noconsole --onefile --add-data "config.json:." --collect-all customtkinter --collect-data tkinterdnd2 --name TextMerger-Linux merge_texts.py
 
     - name: Upload Release Assets
       uses: softprops/action-gh-release@v2
