@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.2] - 2026-03-18
+
+### Fixed
+- **UI Layout**: Added proper vertical padding (`pady`) to all form labels and inputs to resolve cramped visual spacing.
+- **UI Colors**: Muted the bright red "Cancel" button to better match the CustomTkinter dark theme aesthetic.
+
 ## [1.1.1] - 2026-03-17
 
 ### Fixed
