@@ -210,12 +210,14 @@ class MergeApp:
         self.update_path_field(path)
 
     def browse_dir(self):
-        path = filedialog.askdirectory()
+        current_path = self.dir_var.get()
+        path = filedialog.askdirectory(initialdir=current_path if os.path.isdir(current_path) else None)
         if path:
             self.update_path_field(path)
 
     def browse_out_dir(self):
-        path = filedialog.askdirectory()
+        current_path = self.out_dir_var.get()
+        path = filedialog.askdirectory(initialdir=current_path if os.path.isdir(current_path) else None)
         if path:
             self.out_dir_var.set(os.path.normpath(path))
 
