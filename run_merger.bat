@@ -10,9 +10,12 @@ if not exist %VENV_DIR% (
     call %VENV_DIR%\Scripts\activate
     python -m pip install --upgrade pip
     pip install -r requirements.txt
+    pip install -r requirements-dev.txt
 ) else (
     echo Virtual environment found. Activating...
     call %VENV_DIR%\Scripts\activate
+    pip install -r requirements.txt
+    pip install -r requirements-dev.txt
 )
 
 :: Launch the script
