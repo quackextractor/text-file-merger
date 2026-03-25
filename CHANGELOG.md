@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.7] - 2026-03-25
+### Added
+- **Quick Access Buttons**: Added "Open Folder" buttons for both Source and Output directories to improve workflow efficiency.
+- **Cross-Platform Support**: Implemented native folder opening logic for Windows, macOS, and Linux.
+- **Improved Validation**: Added check to verify folder existence before attempting to open, providing log feedback if the path is missing.
+
 ## [1.1.6] - 2026-03-18
 Add .gitignore support and UI/CLI toggle
 
