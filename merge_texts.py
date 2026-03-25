@@ -6,6 +6,7 @@ import argparse
 import json
 import threading
 import tkinter as tk
+import subprocess
 from tkinter import filedialog
 import customtkinter as ctk
 
@@ -215,7 +216,9 @@ class MergeApp:
         dir_frame.pack(fill=tk.X, pady=(0, 10))
         self.dir_combo = ctk.CTkComboBox(dir_frame, variable=self.dir_var, values=list(self.history.keys()))
         self.dir_combo.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
-        ctk.CTkButton(dir_frame, text="Browse", width=80, command=self.browse_dir).pack(side=tk.RIGHT)
+
+        ctk.CTkButton(dir_frame, text="Open Folder", width=90, command=self.open_source_folder).pack(side=tk.RIGHT)
+        ctk.CTkButton(dir_frame, text="Browse", width=80, command=self.browse_dir).pack(side=tk.RIGHT, padx=(0, 5))
 
         if TkinterDnD:
             self.dir_combo.drop_target_register(DND_FILES)
@@ -238,7 +241,9 @@ class MergeApp:
         out_dir_frame.pack(fill=tk.X, pady=(0, 10))
         self.out_dir_entry = ctk.CTkEntry(out_dir_frame, textvariable=self.out_dir_var)
         self.out_dir_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
-        ctk.CTkButton(out_dir_frame, text="Browse", width=80, command=self.browse_out_dir).pack(side=tk.RIGHT)
+
+        ctk.CTkButton(out_dir_frame, text="Open Folder", width=90, command=self.open_output_folder).pack(side=tk.RIGHT)
+        ctk.CTkButton(out_dir_frame, text="Browse", width=80, command=self.browse_out_dir).pack(side=tk.RIGHT, padx=(0, 5))
 
         out_lbl = ctk.CTkLabel(content, text="Output File Name:")
         out_lbl.pack(anchor=tk.W, pady=(5, 2))
@@ -279,6 +284,27 @@ class MergeApp:
         self.log_text.insert(tk.END, text + "\n")
         self.log_text.see(tk.END)
         self.log_text.configure(state=tk.DISABLED)
+
+    def open_folder(self, path):
+        if not path or not os.path.exists(path):
+            self.log_message(f"Cannot open folder: Path does not exist ({path})")
+            return
+
+        try:
+            if sys.platform == "win32":
+                os.startfile(path)
+            elif sys.platform == "darwin":
+                subprocess.call(["open", path])
+            else:
+                subprocess.call(["xdg-open", path])
+        except Exception as e:
+            self.log_message(f"Error opening folder: {e}")
+
+    def open_source_folder(self):
+        self.open_folder(self.dir_var.get())
+
+    def open_output_folder(self):
+        self.open_folder(self.out_dir_var.get())
 
     def on_drag_enter(self, event):
         self.dir_combo.configure(fg_color="#3a7ebf")
