@@ -180,20 +180,21 @@ def convert_to_pdf(txt_path, pdf_path, display_name):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Courier", size=8)
-    pdf.multi_cell(0, 5, f"File: {display_name}\n\n")
+    pdf.cell(0, 5, txt=f"File: {display_name}", ln=1)
+    pdf.cell(0, 5, txt="", ln=1)
 
-    wrapper = textwrap.TextWrapper(width=100, replace_whitespace=False, drop_whitespace=False)
+    wrapper = textwrap.TextWrapper(width=95, replace_whitespace=False, drop_whitespace=False, break_long_words=True)
 
     with open(txt_path, "r", encoding="utf-8", errors="replace") as f:
         for line in f:
             safe_line = line.rstrip('\n').replace('\t', '    ').encode("latin1", "replace").decode("latin1")
             if not safe_line:
-                pdf.ln(5)
+                pdf.cell(0, 5, txt="", ln=1)
                 continue
 
             wrapped_lines = wrapper.wrap(safe_line)
             for w_line in wrapped_lines:
-                pdf.multi_cell(0, 5, w_line)
+                pdf.cell(0, 5, txt=w_line, ln=1)
 
     pdf.output(pdf_path)
 
