@@ -7,14 +7,12 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ## [1.1.8] - 2026-04-23
 ### Added
-* **Improved Release description**: Added a workflow step to extract the current version section from CHANGELOG.md into release_notes.md and pass it as the release body (body_path) when creating a GitHub release. 
-### Changed
-* **Settings Interface**: Simplified the settings window layout and removed the temporary session changes toggle.
-* **Directory Navigation**: Output directory button now opens the folder directly instead of selecting the newly created file in the system file explorer.
-### Removed
-* **PDF Support**: Removed all PDF compilation features, NotebookLM formatting, GUI checkboxes, and CLI arguments.
-* **Dependencies**: Removed `fpdf2` and `pypdf` packages from the requirements list.
-* **Settings Options**: Removed the explicit "Ignored Files" text box and the "Reload from File" button from the GUI settings menu.
+* **Improved Release description**: Added a workflow step to extract the current version section from CHANGELOG.md into release_notes.md and pass it as the release body (body_path) when creating a GitHub release.
+* **PDF Support**: Added PDF compilation features, NotebookLM formatting, GUI checkboxes, and CLI arguments.
+* **Dependencies**: Added `fpdf2` and `pypdf` packages to the requirements list.
+* **Settings Options**: Added the explicit "Ignored Files" text box and the "Reload from File" button to the GUI settings menu.
+* **Settings Interface**: Improved the settings window layout and added the temporary session changes toggle.
+* **Directory Navigation**: Improved the output directory button to open the folder directly instead of selecting the newly created file in the system file explorer.
 
 ## [1.1.7] - 2026-03-25
 ### Added
