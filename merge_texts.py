@@ -427,7 +427,6 @@ class MergeApp:
         self.log_message(f"Starting {mode_text}...")
 
         try:
-            self.reload_config()
             directory = self.dir_var.get()
             ext = self.ext_var.get().strip() or None
             recursive = self.recursive_var.get()
@@ -477,6 +476,7 @@ class MergeApp:
 
             final_out_path = merge_files(
                 directory=directory,
+                config=self.config,
                 extension=ext,
                 recursive=recursive,
                 output_file=self.out_var.get(),
@@ -504,39 +504,64 @@ class MergeApp:
     def open_settings(self):
         settings_win = ctk.CTkToplevel(self.root)
         settings_win.title("Settings")
-        settings_win.geometry("450x450")
+        settings_win.geometry("500x650")
         settings_win.transient(self.root)
 
-        ctk.CTkLabel(settings_win, text="Ignored Directories (comma-separated):").pack(
-            anchor=tk.W, padx=20, pady=(20, 5)
-        )
-        dirs_text = ctk.CTkTextbox(settings_win, height=100)
-        dirs_text.pack(fill=tk.X, padx=20, pady=5)
-        dirs_text.insert("1.0", ", ".join(self.config.get("ignored_dirs", [])))
+        def create_textbox(parent, label_text, config_key):
+            ctk.CTkLabel(parent, text=label_text).pack(anchor=tk.W, padx=20, pady=(10, 2))
+            textbox = ctk.CTkTextbox(parent, height=80)
+            textbox.pack(fill=tk.X, padx=20, pady=2)
+            textbox.insert("1.0", ", ".join(self.config.get(config_key, [])))
+            return textbox
 
-        ctk.CTkLabel(settings_win, text="Ignored Extensions (comma-separated):").pack(
-            anchor=tk.W, padx=20, pady=(15, 5)
-        )
-        exts_text = ctk.CTkTextbox(settings_win, height=100)
-        exts_text.pack(fill=tk.X, padx=20, pady=5)
-        exts_text.insert("1.0", ", ".join(self.config.get("ignored_extensions", [])))
+        dirs_text = create_textbox(settings_win, "Ignored Directories (comma-separated):", "ignored_dirs")
+        exts_text = create_textbox(settings_win, "Ignored Extensions (comma-separated):", "ignored_extensions")
+        files_text = create_textbox(settings_win, "Ignored Files (comma-separated):", "ignored_files")
+
+        temp_var = tk.BooleanVar(value=False)
+        temp_chk = ctk.CTkCheckBox(settings_win, text="Temporary changes (until restart)", variable=temp_var)
+        temp_chk.pack(anchor=tk.W, padx=20, pady=(15, 5))
+
+        btn_frame = ctk.CTkFrame(settings_win, fg_color="transparent")
+        btn_frame.pack(fill=tk.X, padx=20, pady=20)
 
         def save_settings():
             new_dirs = [d.strip() for d in dirs_text.get("1.0", tk.END).split(",") if d.strip()]
             new_exts = [e.strip() for e in exts_text.get("1.0", tk.END).split(",") if e.strip()]
+            new_files = [f.strip() for f in files_text.get("1.0", tk.END).split(",") if f.strip()]
+
             self.config["ignored_dirs"] = new_dirs
             self.config["ignored_extensions"] = new_exts
+            self.config["ignored_files"] = new_files
 
-            try:
-                with open(self.config_path, "w", encoding="utf-8") as f:
-                    json.dump(self.config, f, indent=2)
-                self.reload_config()
-                self.log_message("Settings saved successfully.")
-            except Exception as e:
-                self.log_message(f"Failed to save settings: {e}")
+            if not temp_var.get():
+                try:
+                    with open(self.config_path, "w", encoding="utf-8") as f:
+                        json.dump(self.config, f, indent=2)
+                    self.log_message("Settings saved successfully.")
+                except Exception as e:
+                    self.log_message(f"Failed to save settings: {e}")
+            else:
+                self.log_message("Temporary settings applied for this session.")
+
             settings_win.destroy()
 
-        ctk.CTkButton(settings_win, text="Save Settings", command=save_settings).pack(pady=20)
+        def reload_from_file():
+            self.reload_config()
+
+            dirs_text.delete("1.0", tk.END)
+            dirs_text.insert("1.0", ", ".join(self.config.get("ignored_dirs", [])))
+
+            exts_text.delete("1.0", tk.END)
+            exts_text.insert("1.0", ", ".join(self.config.get("ignored_extensions", [])))
+
+            files_text.delete("1.0", tk.END)
+            files_text.insert("1.0", ", ".join(self.config.get("ignored_files", [])))
+
+            self.log_message("Settings reloaded from file.")
+
+        ctk.CTkButton(btn_frame, text="Reload from File", width=120, command=reload_from_file).pack(side=tk.LEFT, padx=(0, 10))
+        ctk.CTkButton(btn_frame, text="Save Settings", width=120, command=save_settings).pack(side=tk.RIGHT)
 
 
 def _get_ignore_config(config, ignore_dirs, ignore_exts):
@@ -666,6 +691,7 @@ def _merge_single_file(outfile, file_path, display_name, dry_run, log_callback, 
 
 def merge_files(
     directory,
+    config=None,
     extension=None,
     recursive=False,
     output_file=None,
@@ -678,7 +704,9 @@ def merge_files(
     use_gitignore=True,
     pdf_mode=False
 ):
-    config = load_config()
+    if config is None:
+        config = load_config()
+
     raw_out_path = output_file or config.get("output_file", "Mono.txt")
     out_dir = config.get("output_dir", "out")
     out_path = os.path.join(out_dir, os.path.basename(raw_out_path))
@@ -777,4 +805,4 @@ if __name__ == '__main__':
         app = MergeApp(root)
         root.mainloop()
     else:
-        merge_files(args.directory, args.extension, args.recursive, args.output, use_gitignore=not args.no_gitignore, pdf_mode=args.pdf)
+        merge_files(args.directory, config=None, extension=args.extension, recursive=args.recursive, output_file=args.output, use_gitignore=not args.no_gitignore, pdf_mode=args.pdf)
