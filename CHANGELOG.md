@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.8] - 2026-04-23
+### Added
+* **Improved Release description**: Added a workflow step to extract the current version section from CHANGELOG.md into release_notes.md and pass it as the release body (body_path) when creating a GitHub release. 
+### Changed
+* **Settings Interface**: Simplified the settings window layout and removed the temporary session changes toggle.
+* **Directory Navigation**: Output directory button now opens the folder directly instead of selecting the newly created file in the system file explorer.
+### Removed
+* **PDF Support**: Removed all PDF compilation features, NotebookLM formatting, GUI checkboxes, and CLI arguments.
+* **Dependencies**: Removed `fpdf2` and `pypdf` packages from the requirements list.
+* **Settings Options**: Removed the explicit "Ignored Files" text box and the "Reload from File" button from the GUI settings menu.
+
 ## [1.1.7] - 2026-03-25
 ### Added
 - **Quick Access Buttons**: Added "Open Folder" buttons for both Source and Output directories to improve workflow efficiency.

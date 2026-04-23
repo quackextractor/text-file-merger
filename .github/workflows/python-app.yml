@@ -110,11 +110,23 @@ jobs:
       if: matrix.os == 'ubuntu-latest'
       run: pyinstaller --noconsole --onefile --add-data "config.json:." --collect-all customtkinter --collect-data tkinterdnd2 --name TextMerger-Linux merge_texts.py
 
+    - name: Extract Changelog Section
+      id: extract_changelog
+      shell: bash
+      run: |
+        VERSION="${{ needs.check-version.outputs.version }}"
+        # Extract content between this version header and the next header (or end of file)
+        sed -e "1,/## \[$VERSION\]/d" -e '/## \[/,$d' CHANGELOG.md > release_notes.md
+        # Clean up leading/trailing whitespace
+        sed -i 's/[[:space:]]*$//' release_notes.md
+
     - name: Upload Release Assets
       uses: softprops/action-gh-release@v2
       with:
         tag_name: "v${{ needs.check-version.outputs.version }}"
         name: "Version ${{ needs.check-version.outputs.version }}"
+        body_path: release_notes.md
+        generate_release_notes: true
         files: |
           dist/TextMerger-Windows.exe
           dist/TextMerger-Linux
