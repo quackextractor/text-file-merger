@@ -180,8 +180,10 @@ def convert_to_pdf(txt_path, pdf_path, display_name):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Courier", size=8)
-    pdf.cell(0, 5, txt=f"File: {display_name}", ln=1)
-    pdf.cell(0, 5, txt="", ln=1)
+
+    # Updated to resolve fpdf2 deprecation warnings
+    pdf.cell(0, 5, text=f"File: {display_name}", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 5, text="", new_x="LMARGIN", new_y="NEXT")
 
     wrapper = textwrap.TextWrapper(width=95, replace_whitespace=False, drop_whitespace=False, break_long_words=True)
 
@@ -189,12 +191,12 @@ def convert_to_pdf(txt_path, pdf_path, display_name):
         for line in f:
             safe_line = line.rstrip('\n').replace('\t', '    ').encode("latin1", "replace").decode("latin1")
             if not safe_line:
-                pdf.cell(0, 5, txt="", ln=1)
+                pdf.cell(0, 5, text="", new_x="LMARGIN", new_y="NEXT")
                 continue
 
             wrapped_lines = wrapper.wrap(safe_line)
             for w_line in wrapped_lines:
-                pdf.cell(0, 5, txt=w_line, ln=1)
+                pdf.cell(0, 5, text=w_line, new_x="LMARGIN", new_y="NEXT")
 
     pdf.output(pdf_path)
 
@@ -300,12 +302,18 @@ class MergeApp:
         self.pdf_var = tk.BooleanVar(value=False)
         self.pdf_var.trace_add("write", self.on_pdf_toggle)
         pdf_chk = ctk.CTkCheckBox(content, text="Merge into PDF (NotebookLM)", variable=self.pdf_var)
-        pdf_chk.pack(anchor=tk.W, pady=(0, 15))
+        pdf_chk.pack(anchor=tk.W, pady=(0, 5))
+
+        self.keep_sources_var = tk.BooleanVar(value=False)
+        self.keep_chk = ctk.CTkCheckBox(content, text="Keep source PDFs", variable=self.keep_sources_var, state=tk.DISABLED)
+        self.keep_chk.pack(anchor=tk.W, padx=20, pady=(0, 15))
+
         if not PDF_SUPPORT:
             pdf_chk.configure(state=tk.DISABLED)
             Tooltip(pdf_chk, "Install fpdf2 and pypdf to enable this feature")
         else:
             Tooltip(pdf_chk, "Creates source PDFs and merges them into one final document")
+            Tooltip(self.keep_chk, "Preserves the individual compiled source PDF files in the output directory")
 
         btn_frame = ctk.CTkFrame(content, fg_color="transparent")
         btn_frame.pack(fill=tk.X, pady=(10, 10))
@@ -332,14 +340,20 @@ class MergeApp:
 
     def on_pdf_toggle(self, *args):
         current_name = self.out_var.get()
-        if not current_name:
-            return
-        if self.pdf_var.get():
-            if current_name.lower().endswith('.txt'):
-                self.out_var.set(current_name[:-4] + '.pdf')
-        else:
-            if current_name.lower().endswith('.pdf'):
-                self.out_var.set(current_name[:-4] + '.txt')
+        if current_name:
+            if self.pdf_var.get():
+                if current_name.lower().endswith('.txt'):
+                    self.out_var.set(current_name[:-4] + '.pdf')
+            else:
+                if current_name.lower().endswith('.pdf'):
+                    self.out_var.set(current_name[:-4] + '.txt')
+
+        if hasattr(self, 'keep_chk'):
+            if self.pdf_var.get():
+                self.keep_chk.configure(state=tk.NORMAL)
+            else:
+                self.keep_chk.configure(state=tk.DISABLED)
+                self.keep_sources_var.set(False)
 
     def open_folder(self, path):
         if not path or not os.path.exists(path):
@@ -468,6 +482,7 @@ class MergeApp:
             recursive = self.recursive_var.get()
             use_gitignore = self.gitignore_var.get()
             pdf_mode = self.pdf_var.get() if hasattr(self, 'pdf_var') else False
+            keep_sources = self.keep_sources_var.get() if hasattr(self, 'keep_sources_var') else False
 
             ignore_set, ignored_ext_set, ignored_files = _get_ignore_config(self.config, None, None)
             skip_css = self.config.get("skip_css_if_no_ext", True)
@@ -521,7 +536,8 @@ class MergeApp:
                 log_callback=self.log_message,
                 item_callback=progress_callback,
                 use_gitignore=use_gitignore,
-                pdf_mode=pdf_mode
+                pdf_mode=pdf_mode,
+                keep_pdf_sources=keep_sources
             )
 
             if self.cancel_flag:
@@ -738,7 +754,8 @@ def merge_files(
     log_callback=None,
     item_callback=None,
     use_gitignore=True,
-    pdf_mode=False
+    pdf_mode=False,
+    keep_pdf_sources=False
 ):
     if config is None:
         config = load_config()
@@ -761,7 +778,8 @@ def merge_files(
     pdf_temp_dir = None
     pdf_list = []
     if pdf_mode and not dry_run:
-        pdf_temp_dir = os.path.join(out_dir, "pdf_sources")
+        base_filename = os.path.splitext(os.path.basename(out_path))[0]
+        pdf_temp_dir = os.path.join(out_dir, base_filename)
         os.makedirs(pdf_temp_dir, exist_ok=True)
 
     outfile = None
@@ -788,9 +806,15 @@ def merge_files(
                     merger.append(p)
                 merger.write(out_path)
                 merger.close()
-                shutil.rmtree(pdf_temp_dir)
-                if log_callback:
-                    log_callback("Source files cleaned up completely.")
+
+                if not keep_pdf_sources:
+                    shutil.rmtree(pdf_temp_dir)
+                    if log_callback:
+                        log_callback("Source files cleaned up completely.")
+                else:
+                    if log_callback:
+                        log_callback(f"Source files preserved in: {pdf_temp_dir}")
+
             except Exception as e:
                 if log_callback:
                     log_callback(f"Failed to join sources: {e}")
@@ -811,6 +835,7 @@ if __name__ == '__main__':
     parser.add_argument("--gui", action="store_true", help="Force GUI mode")
     parser.add_argument("--no-gitignore", action="store_true", help="Disable auto reading of .gitignore files")
     parser.add_argument("--pdf", action="store_true", help="Merge into a single PDF")
+    parser.add_argument("--keep-sources", action="store_true", help="Keep individual source PDFs when merging into a single PDF")
 
     args, unknown = parser.parse_known_args()
 
@@ -841,4 +866,13 @@ if __name__ == '__main__':
         app = MergeApp(root)
         root.mainloop()
     else:
-        merge_files(args.directory, config=None, extension=args.extension, recursive=args.recursive, output_file=args.output, use_gitignore=not args.no_gitignore, pdf_mode=args.pdf)
+        merge_files(
+            args.directory,
+            config=None,
+            extension=args.extension,
+            recursive=args.recursive,
+            output_file=args.output,
+            use_gitignore=not args.no_gitignore,
+            pdf_mode=args.pdf,
+            keep_pdf_sources=args.keep_sources
+        )
