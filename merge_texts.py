@@ -7,6 +7,7 @@ import json
 import threading
 import tkinter as tk
 import subprocess
+import shutil
 from tkinter import filedialog
 import customtkinter as ctk
 
@@ -14,6 +15,13 @@ try:
     from tkinterdnd2 import DND_FILES, TkinterDnD
 except ImportError:
     TkinterDnD = None
+
+try:
+    from fpdf import FPDF
+    from pypdf import PdfWriter
+    PDF_SUPPORT = True
+except ImportError:
+    PDF_SUPPORT = False
 
 
 def get_bundled_config():
@@ -165,6 +173,20 @@ class Tooltip:
             self.tooltip_window = None
 
 
+def convert_to_pdf(txt_path, pdf_path, display_name):
+    if not PDF_SUPPORT:
+        raise ImportError("fpdf2 and pypdf are required for generation")
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("helvetica", size=10)
+    pdf.multi_cell(0, 5, f"File: {display_name}\n\n")
+    with open(txt_path, "r", encoding="utf-8", errors="replace") as f:
+        for line in f:
+            safe_line = line.rstrip('\n').replace('\t', '    ').encode("latin1", "replace").decode("latin1")
+            pdf.multi_cell(0, 5, safe_line)
+    pdf.output(pdf_path)
+
+
 class MergeApp:
     def __init__(self, root):
         self.root = root
@@ -176,6 +198,7 @@ class MergeApp:
         self.config = load_config(self.config_path)
         self.history = self.load_history()
         self.cancel_flag = False
+        self.last_output_path = None
 
         self.setup_ui()
 
@@ -259,8 +282,17 @@ class MergeApp:
 
         self.gitignore_var = tk.BooleanVar(value=self.config.get("use_gitignore", True))
         git_chk = ctk.CTkCheckBox(content, text="Use .gitignore rules", variable=self.gitignore_var)
-        git_chk.pack(anchor=tk.W, pady=(0, 15))
+        git_chk.pack(anchor=tk.W, pady=(0, 5))
         Tooltip(git_chk, "Automatically read and apply .gitignore files found in directories")
+
+        self.pdf_var = tk.BooleanVar(value=False)
+        pdf_chk = ctk.CTkCheckBox(content, text="Merge into PDF (NotebookLM)", variable=self.pdf_var)
+        pdf_chk.pack(anchor=tk.W, pady=(0, 15))
+        if not PDF_SUPPORT:
+            pdf_chk.configure(state=tk.DISABLED)
+            Tooltip(pdf_chk, "Install fpdf2 and pypdf to enable this feature")
+        else:
+            Tooltip(pdf_chk, "Creates source PDFs and merges them into one final document")
 
         btn_frame = ctk.CTkFrame(content, fg_color="transparent")
         btn_frame.pack(fill=tk.X, pady=(10, 10))
@@ -304,7 +336,24 @@ class MergeApp:
         self.open_folder(self.dir_var.get())
 
     def open_output_folder(self):
-        self.open_folder(self.out_dir_var.get())
+        target_file = getattr(self, "last_output_path", None)
+        path = self.out_dir_var.get()
+
+        if target_file and os.path.exists(target_file):
+            try:
+                if sys.platform == "win32":
+                    subprocess.call(["explorer", "/select,", os.path.normpath(target_file)])
+                    return
+                elif sys.platform == "darwin":
+                    subprocess.call(["open", "-R", target_file])
+                    return
+                else:
+                    subprocess.call(["xdg-open", os.path.dirname(target_file)])
+                    return
+            except Exception as e:
+                self.log_message(f"Error revealing file: {e}")
+
+        self.open_folder(path)
 
     def on_drag_enter(self, event):
         self.dir_combo.configure(fg_color="#3a7ebf")
@@ -383,6 +432,7 @@ class MergeApp:
             ext = self.ext_var.get().strip() or None
             recursive = self.recursive_var.get()
             use_gitignore = self.gitignore_var.get()
+            pdf_mode = self.pdf_var.get() if hasattr(self, 'pdf_var') else False
 
             ignore_set, ignored_ext_set, ignored_files = _get_ignore_config(self.config, None, None)
             skip_css = self.config.get("skip_css_if_no_ext", True)
@@ -425,7 +475,7 @@ class MergeApp:
                 processed_count[0] += 1
                 self.progress.set(processed_count[0] / total_files)
 
-            merge_files(
+            final_out_path = merge_files(
                 directory=directory,
                 extension=ext,
                 recursive=recursive,
@@ -434,14 +484,17 @@ class MergeApp:
                 dry_run=dry_run,
                 log_callback=self.log_message,
                 item_callback=progress_callback,
-                use_gitignore=use_gitignore
+                use_gitignore=use_gitignore,
+                pdf_mode=pdf_mode
             )
 
             if self.cancel_flag:
                 self.log_message("Operation Cancelled.")
             else:
                 if not dry_run:
-                    self.save_history(directory, self.out_var.get())
+                    if final_out_path:
+                        self.last_output_path = final_out_path
+                        self.save_history(directory, os.path.basename(final_out_path))
                     self.update_combo_list()
                 self.log_message("Merge completed successfully." if not dry_run else "Preview finished.")
 
@@ -530,7 +583,8 @@ def _is_file_included(filename, root, directory, extension, ignore_set, ignored_
 
 
 def _merge_recursive(directory, extension, ignore_set, ignored_ext_set, ignored_files, skip_css,
-                     cancel_check, dry_run, log_callback, outfile, item_callback=None, git_filter=None):
+                     cancel_check, dry_run, log_callback, outfile, item_callback=None, git_filter=None,
+                     pdf_mode=False, pdf_temp_dir=None, pdf_list=None):
     for root, dirs, files in os.walk(directory):
         if cancel_check and cancel_check():
             break
@@ -550,13 +604,14 @@ def _merge_recursive(directory, extension, ignore_set, ignored_ext_set, ignored_
             if _is_file_included(file, root, directory, extension, ignore_set,
                                  ignored_ext_set, ignored_files, skip_css):
                 rel_path = os.path.relpath(file_path, directory)
-                _merge_single_file(outfile, file_path, rel_path, dry_run, log_callback)
+                _merge_single_file(outfile, file_path, rel_path, dry_run, log_callback, pdf_mode, pdf_temp_dir, pdf_list)
                 if item_callback:
                     item_callback()
 
 
 def _merge_flat(directory, extension, ignore_set, ignored_ext_set, ignored_files, skip_css,
-                cancel_check, dry_run, log_callback, outfile, item_callback=None, git_filter=None):
+                cancel_check, dry_run, log_callback, outfile, item_callback=None, git_filter=None,
+                pdf_mode=False, pdf_temp_dir=None, pdf_list=None):
     for entry in os.listdir(directory):
         if cancel_check and cancel_check():
             break
@@ -573,57 +628,28 @@ def _merge_flat(directory, extension, ignore_set, ignored_ext_set, ignored_files
 
         if _is_file_included(entry, directory, directory, extension, ignore_set,
                              ignored_ext_set, ignored_files, skip_css):
-            _merge_single_file(outfile, full_path, entry, dry_run, log_callback)
+            _merge_single_file(outfile, full_path, entry, dry_run, log_callback, pdf_mode, pdf_temp_dir, pdf_list)
             if item_callback:
                 item_callback()
 
 
-def merge_files(
-    directory,
-    extension=None,
-    recursive=False,
-    output_file=None,
-    ignore_dirs=None,
-    ignore_exts=None,
-    cancel_check=None,
-    dry_run=False,
-    log_callback=None,
-    item_callback=None,
-    use_gitignore=True
-):
-    config = load_config()
-    raw_out_path = output_file or config.get("output_file", "Mono.txt")
-    out_dir = config.get("output_dir", "out")
-    out_path = os.path.join(out_dir, os.path.basename(raw_out_path))
-
-    ignore_set, ignored_ext_set, ignored_files = _get_ignore_config(config, ignore_dirs, ignore_exts)
-    skip_css = config.get("skip_css_if_no_ext", True)
-    git_filter = GitIgnoreFilter(directory) if use_gitignore else None
-
-    if extension and not extension.startswith('.'):
-        extension = f'.{extension}'
-
-    outfile = None
-    try:
-        if not dry_run:
-            os.makedirs(out_dir, exist_ok=True)
-            outfile = open(out_path, "w", encoding="utf-8")
-
-        if recursive:
-            _merge_recursive(directory, extension, ignore_set, ignored_ext_set, ignored_files,
-                             skip_css, cancel_check, dry_run, log_callback, outfile, item_callback, git_filter)
-        else:
-            _merge_flat(directory, extension, ignore_set, ignored_ext_set, ignored_files,
-                        skip_css, cancel_check, dry_run, log_callback, outfile, item_callback, git_filter)
-    finally:
-        if outfile:
-            outfile.close()
-
-
-def _merge_single_file(outfile, file_path, display_name, dry_run, log_callback):
+def _merge_single_file(outfile, file_path, display_name, dry_run, log_callback, pdf_mode=False, pdf_temp_dir=None, pdf_list=None):
     if dry_run:
         if log_callback:
             log_callback(f"Would merge: {display_name}")
+        return
+
+    if pdf_mode:
+        try:
+            safe_name = display_name.replace(os.sep, "_").replace("/", "_").replace("\\", "_") + ".pdf"
+            pdf_path = os.path.join(pdf_temp_dir, safe_name)
+            convert_to_pdf(file_path, pdf_path, display_name)
+            pdf_list.append(pdf_path)
+            if log_callback:
+                log_callback(f"Prepared PDF: {display_name}")
+        except Exception as e:
+            if log_callback:
+                log_callback(f"Error compiling {display_name}: {e}")
     else:
         outfile.write(f"----- {display_name} -----\n")
         try:
@@ -638,6 +664,80 @@ def _merge_single_file(outfile, file_path, display_name, dry_run, log_callback):
         outfile.write("\n")
 
 
+def merge_files(
+    directory,
+    extension=None,
+    recursive=False,
+    output_file=None,
+    ignore_dirs=None,
+    ignore_exts=None,
+    cancel_check=None,
+    dry_run=False,
+    log_callback=None,
+    item_callback=None,
+    use_gitignore=True,
+    pdf_mode=False
+):
+    config = load_config()
+    raw_out_path = output_file or config.get("output_file", "Mono.txt")
+    out_dir = config.get("output_dir", "out")
+    out_path = os.path.join(out_dir, os.path.basename(raw_out_path))
+
+    ignore_set, ignored_ext_set, ignored_files = _get_ignore_config(config, ignore_dirs, ignore_exts)
+    skip_css = config.get("skip_css_if_no_ext", True)
+    git_filter = GitIgnoreFilter(directory) if use_gitignore else None
+
+    if extension and not extension.startswith('.'):
+        extension = f'.{extension}'
+
+    if pdf_mode:
+        base, _ = os.path.splitext(out_path)
+        out_path = base + ".pdf"
+
+    pdf_temp_dir = None
+    pdf_list = []
+    if pdf_mode and not dry_run:
+        pdf_temp_dir = os.path.join(out_dir, "pdf_sources")
+        os.makedirs(pdf_temp_dir, exist_ok=True)
+
+    outfile = None
+    try:
+        if not dry_run and not pdf_mode:
+            os.makedirs(out_dir, exist_ok=True)
+            outfile = open(out_path, "w", encoding="utf-8")
+
+        if recursive:
+            _merge_recursive(directory, extension, ignore_set, ignored_ext_set, ignored_files,
+                             skip_css, cancel_check, dry_run, log_callback, outfile, item_callback, git_filter,
+                             pdf_mode, pdf_temp_dir, pdf_list)
+        else:
+            _merge_flat(directory, extension, ignore_set, ignored_ext_set, ignored_files,
+                        skip_css, cancel_check, dry_run, log_callback, outfile, item_callback, git_filter,
+                        pdf_mode, pdf_temp_dir, pdf_list)
+
+        if pdf_mode and not dry_run and pdf_list:
+            if log_callback:
+                log_callback("Compiling final PDF structure...")
+            try:
+                merger = PdfWriter()
+                for p in pdf_list:
+                    merger.append(p)
+                merger.write(out_path)
+                merger.close()
+                shutil.rmtree(pdf_temp_dir)
+                if log_callback:
+                    log_callback("Source files cleaned up completely.")
+            except Exception as e:
+                if log_callback:
+                    log_callback(f"Failed to join sources: {e}")
+
+    finally:
+        if outfile:
+            outfile.close()
+
+    return out_path
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Merge files via CLI or GUI.")
     parser.add_argument("directory", nargs="?", help="Directory to scan")
@@ -645,7 +745,8 @@ if __name__ == '__main__':
     parser.add_argument("-r", "--recursive", action="store_true")
     parser.add_argument("-o", "--output", default=None)
     parser.add_argument("--gui", action="store_true", help="Force GUI mode")
-    parser.add_argument("--no-gitignore", action="store_true", help="Disable auto-reading of .gitignore files")
+    parser.add_argument("--no-gitignore", action="store_true", help="Disable auto reading of .gitignore files")
+    parser.add_argument("--pdf", action="store_true", help="Merge into a single PDF")
 
     args, unknown = parser.parse_known_args()
 
@@ -676,4 +777,4 @@ if __name__ == '__main__':
         app = MergeApp(root)
         root.mainloop()
     else:
-        merge_files(args.directory, args.extension, args.recursive, args.output, use_gitignore=not args.no_gitignore)
+        merge_files(args.directory, args.extension, args.recursive, args.output, use_gitignore=not args.no_gitignore, pdf_mode=args.pdf)
