@@ -8,6 +8,7 @@ import threading
 import tkinter as tk
 import subprocess
 import shutil
+import textwrap
 from tkinter import filedialog
 import customtkinter as ctk
 
@@ -178,12 +179,22 @@ def convert_to_pdf(txt_path, pdf_path, display_name):
         raise ImportError("fpdf2 and pypdf are required for generation")
     pdf = FPDF()
     pdf.add_page()
-    pdf.set_font("helvetica", size=10)
+    pdf.set_font("Courier", size=8)
     pdf.multi_cell(0, 5, f"File: {display_name}\n\n")
+
+    wrapper = textwrap.TextWrapper(width=100, replace_whitespace=False, drop_whitespace=False)
+
     with open(txt_path, "r", encoding="utf-8", errors="replace") as f:
         for line in f:
             safe_line = line.rstrip('\n').replace('\t', '    ').encode("latin1", "replace").decode("latin1")
-            pdf.multi_cell(0, 5, safe_line)
+            if not safe_line:
+                pdf.ln(5)
+                continue
+
+            wrapped_lines = wrapper.wrap(safe_line)
+            for w_line in wrapped_lines:
+                pdf.multi_cell(0, 5, w_line)
+
     pdf.output(pdf_path)
 
 
@@ -286,6 +297,7 @@ class MergeApp:
         Tooltip(git_chk, "Automatically read and apply .gitignore files found in directories")
 
         self.pdf_var = tk.BooleanVar(value=False)
+        self.pdf_var.trace_add("write", self.on_pdf_toggle)
         pdf_chk = ctk.CTkCheckBox(content, text="Merge into PDF (NotebookLM)", variable=self.pdf_var)
         pdf_chk.pack(anchor=tk.W, pady=(0, 15))
         if not PDF_SUPPORT:
@@ -316,6 +328,17 @@ class MergeApp:
         self.log_text.insert(tk.END, text + "\n")
         self.log_text.see(tk.END)
         self.log_text.configure(state=tk.DISABLED)
+
+    def on_pdf_toggle(self, *args):
+        current_name = self.out_var.get()
+        if not current_name:
+            return
+        if self.pdf_var.get():
+            if current_name.lower().endswith('.txt'):
+                self.out_var.set(current_name[:-4] + '.pdf')
+        else:
+            if current_name.lower().endswith('.pdf'):
+                self.out_var.set(current_name[:-4] + '.txt')
 
     def open_folder(self, path):
         if not path or not os.path.exists(path):
@@ -384,15 +407,27 @@ class MergeApp:
 
     def on_dir_change(self, *args):
         path = self.dir_var.get()
+        is_pdf = self.pdf_var.get() if hasattr(self, 'pdf_var') else False
+
         if path in self.history:
-            self.out_var.set(self.history[path])
+            saved_name = self.history[path]
+            if is_pdf and saved_name.endswith('.txt'):
+                saved_name = saved_name[:-4] + '.pdf'
+            elif not is_pdf and saved_name.endswith('.pdf'):
+                saved_name = saved_name[:-4] + '.txt'
+            self.out_var.set(saved_name)
         else:
+            ext = ".pdf" if is_pdf else ".txt"
             if path:
                 base = os.path.basename(os.path.normpath(path))
                 if base:
-                    self.out_var.set(f"{base}.txt")
+                    self.out_var.set(f"{base}{ext}")
                     return
-            self.out_var.set(self.config.get("output_file", "Mono.txt"))
+
+            default_out = self.config.get("output_file", "Mono.txt")
+            if is_pdf and default_out.endswith('.txt'):
+                default_out = default_out[:-4] + '.pdf'
+            self.out_var.set(default_out)
 
     def update_combo_list(self):
         unique_names = list(set(self.history.values()))
