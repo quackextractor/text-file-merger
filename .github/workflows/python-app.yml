@@ -102,14 +102,14 @@ jobs:
       if: matrix.os == 'ubuntu-latest'
       run: sudo apt-get update && sudo apt-get install -y xvfb
 
-    - name: Build Executable (Windows)
+- name: Build Executable (Windows)
       if: matrix.os == 'windows-latest'
-      run: pyinstaller --noconsole --onefile --add-data "config.json;." --collect-all customtkinter --collect-data tkinterdnd2 --name TextMerger-Windows merge_texts.py
+      run: pyinstaller --noconsole --onefile --add-data "config.json;." --collect-all customtkinter --collect-data tkinterdnd2 --name TextMerger-Windows main.py
 
     - name: Build Executable (Linux)
       if: matrix.os == 'ubuntu-latest'
-      run: pyinstaller --noconsole --onefile --add-data "config.json:." --collect-all customtkinter --collect-data tkinterdnd2 --name TextMerger-Linux merge_texts.py
-
+      run: pyinstaller --noconsole --onefile --add-data "config.json:." --collect-all customtkinter --collect-data tkinterdnd2 --name TextMerger-Linux main.py
+      
     - name: Extract Changelog Section
       id: extract_changelog
       shell: bash

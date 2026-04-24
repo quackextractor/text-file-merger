@@ -2,14 +2,11 @@ import os
 import json
 import pytest
 from unittest.mock import patch, mock_open, MagicMock
-from merge_texts import (
-    load_config,
-    _is_file_included,
-    _get_ignore_config,
-    GitIgnoreFilter,
-    merge_files,
-    MergeApp
-)
+
+from src.config import load_config
+from src.filters import _is_file_included, _get_ignore_config, GitIgnoreFilter
+from src.merger import merge_files
+from src.gui import MergeApp
 
 # Fixture to provide a standard configuration for tests
 
@@ -93,10 +90,10 @@ def test_gitignore_filter(tmp_path):
 
 def test_merge_files_execution(tmp_path, mocker):
     # Setup source directory
-    src = tmp_path / "src"
-    src.mkdir()
-    (src / "file1.txt").write_text("Hello")
-    (src / "file2.txt").write_text("World")
+    src_dir = tmp_path / "src_dir"
+    src_dir.mkdir()
+    (src_dir / "file1.txt").write_text("Hello")
+    (src_dir / "file2.txt").write_text("World")
 
     out_dir = tmp_path / "out"
 
@@ -109,10 +106,10 @@ def test_merge_files_execution(tmp_path, mocker):
         "ignored_files": [],
         "skip_css_if_no_ext": False
     }
-    mocker.patch("merge_texts.load_config", return_value=mock_conf)
+    mocker.patch("src.merger.load_config", return_value=mock_conf)
 
     # Run merge
-    merge_files(str(src), output_file="merged.txt", use_gitignore=False)
+    merge_files(str(src_dir), output_file="merged.txt", use_gitignore=False)
 
     # Verify output
     merged_file = out_dir / "merged.txt"

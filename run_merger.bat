@@ -28,7 +28,7 @@ pre-commit run --all-files
 
 :: Launch the script
 echo Starting Merge Tool...
-python merge_texts.py
+python main.py
 
 :: Deactivate on close
 call %VENV_DIR%\Scripts\deactivate
