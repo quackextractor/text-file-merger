@@ -149,7 +149,11 @@ class MergeApp:
 
         self.keep_sources_var = tk.BooleanVar(value=False)
         self.keep_chk = ctk.CTkCheckBox(content, text="Keep source PDFs", variable=self.keep_sources_var, state=tk.DISABLED)
-        self.keep_chk.pack(anchor=tk.W, padx=20, pady=(0, 15))
+        self.keep_chk.pack(anchor=tk.W, padx=20, pady=(0, 5))
+
+        self.styled_pdf_var = tk.BooleanVar(value=False)
+        self.styled_chk = ctk.CTkCheckBox(content, text="Styled PDF Formatting", variable=self.styled_pdf_var, state=tk.DISABLED)
+        self.styled_chk.pack(anchor=tk.W, padx=20, pady=(0, 15))
 
         if not PDF_SUPPORT:
             pdf_chk.configure(state=tk.DISABLED)
@@ -157,6 +161,7 @@ class MergeApp:
         else:
             Tooltip(pdf_chk, "Creates source PDFs and merges them into one final document")
             Tooltip(self.keep_chk, "Preserves the individual compiled source PDF files in the output directory")
+            Tooltip(self.styled_chk, "Applies modern fonts and styling to the output PDF instead of raw text")
 
         btn_frame = ctk.CTkFrame(content, fg_color="transparent")
         btn_frame.pack(fill=tk.X, pady=(10, 10))
@@ -194,9 +199,14 @@ class MergeApp:
         if hasattr(self, 'keep_chk'):
             if self.pdf_var.get():
                 self.keep_chk.configure(state=tk.NORMAL)
+                if hasattr(self, 'styled_chk'):
+                    self.styled_chk.configure(state=tk.NORMAL)
             else:
                 self.keep_chk.configure(state=tk.DISABLED)
                 self.keep_sources_var.set(False)
+                if hasattr(self, 'styled_chk'):
+                    self.styled_chk.configure(state=tk.DISABLED)
+                    self.styled_pdf_var.set(False)
 
     def open_folder(self, path):
         if not path or not os.path.exists(path):
@@ -325,6 +335,7 @@ class MergeApp:
             use_gitignore = self.gitignore_var.get()
             pdf_mode = self.pdf_var.get() if hasattr(self, 'pdf_var') else False
             keep_sources = self.keep_sources_var.get() if hasattr(self, 'keep_sources_var') else False
+            styled_pdf = self.styled_pdf_var.get() if hasattr(self, 'styled_pdf_var') else False
 
             ignore_set, ignored_ext_set, ignored_files = _get_ignore_config(self.config, None, None)
             skip_css = self.config.get("skip_css_if_no_ext", True)
@@ -379,7 +390,8 @@ class MergeApp:
                 item_callback=progress_callback,
                 use_gitignore=use_gitignore,
                 pdf_mode=pdf_mode,
-                keep_pdf_sources=keep_sources
+                keep_pdf_sources=keep_sources,
+                styled_pdf=styled_pdf
             )
 
             if self.cancel_flag:

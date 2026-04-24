@@ -50,7 +50,7 @@ def _extract_legacy_doc_binary(file_path):
 
 def _merge_recursive(directory, extension, ignore_set, ignored_ext_set, ignored_files, skip_css,
                      cancel_check, dry_run, log_callback, outfile, item_callback=None, git_filter=None,
-                     pdf_mode=False, pdf_temp_dir=None, pdf_list=None):
+                     pdf_mode=False, pdf_temp_dir=None, pdf_list=None, styled_pdf=False):
     for root, dirs, files in os.walk(directory):
         if cancel_check and cancel_check():
             break
@@ -71,14 +71,14 @@ def _merge_recursive(directory, extension, ignore_set, ignored_ext_set, ignored_
             if _is_file_included(file, root, directory, extension, ignore_set,
                                  ignored_ext_set, ignored_files, skip_css):
                 rel_path = os.path.relpath(file_path, directory)
-                _merge_single_file(outfile, file_path, rel_path, dry_run, log_callback, pdf_mode, pdf_temp_dir, pdf_list)
+                _merge_single_file(outfile, file_path, rel_path, dry_run, log_callback, pdf_mode, pdf_temp_dir, pdf_list, styled_pdf)
                 if item_callback:
                     item_callback()
 
 
 def _merge_flat(directory, extension, ignore_set, ignored_ext_set, ignored_files, skip_css,
                 cancel_check, dry_run, log_callback, outfile, item_callback=None, git_filter=None,
-                pdf_mode=False, pdf_temp_dir=None, pdf_list=None):
+                pdf_mode=False, pdf_temp_dir=None, pdf_list=None, styled_pdf=False):
     for entry in os.listdir(directory):
         if cancel_check and cancel_check():
             break
@@ -95,12 +95,12 @@ def _merge_flat(directory, extension, ignore_set, ignored_ext_set, ignored_files
 
         if _is_file_included(entry, directory, directory, extension, ignore_set,
                              ignored_ext_set, ignored_files, skip_css):
-            _merge_single_file(outfile, full_path, entry, dry_run, log_callback, pdf_mode, pdf_temp_dir, pdf_list)
+            _merge_single_file(outfile, full_path, entry, dry_run, log_callback, pdf_mode, pdf_temp_dir, pdf_list, styled_pdf)
             if item_callback:
                 item_callback()
 
 
-def _merge_single_file(outfile, file_path, display_name, dry_run, log_callback, pdf_mode=False, pdf_temp_dir=None, pdf_list=None):
+def _merge_single_file(outfile, file_path, display_name, dry_run, log_callback, pdf_mode=False, pdf_temp_dir=None, pdf_list=None, styled_pdf=False):
     if dry_run:
         if log_callback:
             log_callback(f"Would merge: {display_name}")
@@ -184,7 +184,7 @@ def _merge_single_file(outfile, file_path, display_name, dry_run, log_callback, 
                     temp_txt.close()
                     target_txt_path = temp_txt.name
 
-                convert_to_pdf(target_txt_path, pdf_path, display_name)
+                convert_to_pdf(target_txt_path, pdf_path, display_name, styled_pdf)
                 pdf_list.append(pdf_path)
 
             if temp_txt:
@@ -231,7 +231,8 @@ def merge_files(
     item_callback=None,
     use_gitignore=True,
     pdf_mode=False,
-    keep_pdf_sources=False
+    keep_pdf_sources=False,
+    styled_pdf=False
 ):
     if config is None:
         config = load_config()
@@ -267,11 +268,11 @@ def merge_files(
         if recursive:
             _merge_recursive(directory, extension, ignore_set, ignored_ext_set, ignored_files,
                              skip_css, cancel_check, dry_run, log_callback, outfile, item_callback, git_filter,
-                             pdf_mode, pdf_temp_dir, pdf_list)
+                             pdf_mode, pdf_temp_dir, pdf_list, styled_pdf)
         else:
             _merge_flat(directory, extension, ignore_set, ignored_ext_set, ignored_files,
                         skip_css, cancel_check, dry_run, log_callback, outfile, item_callback, git_filter,
-                        pdf_mode, pdf_temp_dir, pdf_list)
+                        pdf_mode, pdf_temp_dir, pdf_list, styled_pdf)
 
         if pdf_mode and not dry_run and pdf_list:
             if log_callback:
