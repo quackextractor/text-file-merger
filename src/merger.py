@@ -3,6 +3,8 @@ import shutil
 import tempfile
 import string
 import re
+import subprocess
+import platform
 from src.config import load_config
 from src.filters import GitIgnoreFilter, _get_ignore_config, _is_file_included
 from src.pdf_utils import convert_to_pdf, PDF_SUPPORT
@@ -12,6 +14,12 @@ try:
     DOCX_SUPPORT = True
 except ImportError:
     DOCX_SUPPORT = False
+
+try:
+    from docx2pdf import convert as convert_docx
+    DOCX2PDF_SUPPORT = True
+except ImportError:
+    DOCX2PDF_SUPPORT = False
 
 
 def _extract_legacy_doc_binary(file_path):
@@ -51,6 +59,7 @@ def _merge_recursive(directory, extension, ignore_set, ignored_ext_set, ignored_
             dirs[:] = [d for d in dirs if not git_filter.is_ignored(os.path.join(root, d), is_dir=True)]
 
         dirs[:] = [d for d in dirs if d not in ignore_set]
+
         for file in files:
             if cancel_check and cancel_check():
                 break
@@ -107,33 +116,83 @@ def _merge_single_file(outfile, file_path, display_name, dry_run, log_callback, 
 
             target_txt_path = file_path
             temp_txt = None
+            direct_pdf_created = False
 
-            # Handle .docx extraction
-            if is_docx and DOCX_SUPPORT:
-                doc = docx.Document(file_path)
-                text = "\n".join([para.text for para in doc.paragraphs])
-                temp_txt = tempfile.NamedTemporaryFile(delete=False, mode='w', encoding='utf-8')
-                temp_txt.write(text)
-                temp_txt.close()
-                target_txt_path = temp_txt.name
+            # Tier 1: Try MS Word via docx2pdf
+            if is_docx and DOCX2PDF_SUPPORT:
+                try:
+                    convert_docx(file_path, pdf_path)
+                    pdf_list.append(pdf_path)
+                    direct_pdf_created = True
+                except Exception as e:
+                    if log_callback:
+                        log_callback(f"MS Word conversion failed: {e}")
 
-            # Handle .doc brute-force extraction
-            elif is_doc:
-                text = _extract_legacy_doc_binary(file_path)
-                temp_txt = tempfile.NamedTemporaryFile(delete=False, mode='w', encoding='utf-8')
-                temp_txt.write(text)
-                temp_txt.close()
-                target_txt_path = temp_txt.name
+            # Tier 2: Try LibreOffice Headless
+            if is_docx and not direct_pdf_created:
+                try:
+                    system = platform.system()
+                    if system == "Windows":
+                        lo_path = r"C:\Program Files\LibreOffice\program\soffice.exe"
+                    elif system == "Darwin":
+                        lo_path = "/Applications/LibreOffice.app/Contents/MacOS/soffice"
+                    else:
+                        lo_path = "soffice"
 
-            convert_to_pdf(target_txt_path, pdf_path, display_name)
-            pdf_list.append(pdf_path)
+                    can_run_lo = True
+                    if system in ["Windows", "Darwin"] and not os.path.exists(lo_path):
+                        can_run_lo = False
 
-            # Clean up the temporary text file
+                    if can_run_lo:
+                        subprocess.run(
+                            [lo_path, "--headless", "--convert-to", "pdf", "--outdir", pdf_temp_dir, file_path],
+                            check=True,
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL
+                        )
+
+                        lo_out_name = os.path.splitext(os.path.basename(file_path))[0] + ".pdf"
+                        lo_out_path = os.path.join(pdf_temp_dir, lo_out_name)
+
+                        if os.path.exists(lo_out_path):
+                            if lo_out_path != pdf_path:
+                                if os.path.exists(pdf_path):
+                                    os.remove(pdf_path)
+                                os.rename(lo_out_path, pdf_path)
+                            pdf_list.append(pdf_path)
+                            direct_pdf_created = True
+                            if log_callback:
+                                log_callback(f"LibreOffice conversion successful: {display_name}")
+                except Exception as e:
+                    if log_callback:
+                        log_callback(f"LibreOffice conversion failed: {e}")
+
+            # Tier 3: Fallback to Plain Text Extraction
+            if not direct_pdf_created:
+                if is_docx and DOCX_SUPPORT:
+                    doc = docx.Document(file_path)
+                    text = "\n".join([para.text for para in doc.paragraphs])
+                    temp_txt = tempfile.NamedTemporaryFile(delete=False, mode='w', encoding='utf-8')
+                    temp_txt.write(text)
+                    temp_txt.close()
+                    target_txt_path = temp_txt.name
+
+                elif is_doc:
+                    text = _extract_legacy_doc_binary(file_path)
+                    temp_txt = tempfile.NamedTemporaryFile(delete=False, mode='w', encoding='utf-8')
+                    temp_txt.write(text)
+                    temp_txt.close()
+                    target_txt_path = temp_txt.name
+
+                convert_to_pdf(target_txt_path, pdf_path, display_name)
+                pdf_list.append(pdf_path)
+
             if temp_txt:
                 os.remove(temp_txt.name)
 
-            if log_callback:
-                log_callback(f"Prepared PDF: {display_name}")
+            if log_callback and not direct_pdf_created:
+                log_callback(f"Prepared PDF via text fallback: {display_name}")
+
         except Exception as e:
             if log_callback:
                 log_callback(f"Error compiling {display_name}: {e}")

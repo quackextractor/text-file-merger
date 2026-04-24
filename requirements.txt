@@ -3,3 +3,4 @@ customtkinter
 fpdf2
 pypdf
 python-docx
+docx2pdf
