@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-04-24
+### Added
+* **Word Document Support**: Added support for processing modern `.docx` and legacy `.doc` files.
+* **PDF Conversion Tiers**: Implemented multi-tier PDF conversion for Word documents, attempting conversion via `docx2pdf` first, followed by LibreOffice Headless, and falling back to raw text extraction if necessary.
+* **Styled PDF Formatting**: Introduced a `--styled-pdf` CLI argument and a GUI checkbox to apply modern formatting and Helvetica fonts to the output PDF.
+* **Unicode Font Support**: Implemented system font detection for Windows, macOS, and Linux to load standard monospaced Unicode TTF fonts for unstyled PDF exports.
+* **Dependencies**: Added `python-docx` and `docx2pdf` to the `requirements.txt` file.
+
 ## [1.2.0] - 2026-04-24
 ### Changed
 * **Architecture Refactor**: Split the monolithic `merge_texts.py` into a modular package structure within a new `src/` directory (`config.py`, `filters.py`, `pdf_utils.py`, `merger.py`, and `gui.py`).

@@ -152,7 +152,7 @@ class MergeApp:
         self.keep_chk.pack(anchor=tk.W, padx=20, pady=(0, 5))
 
         self.styled_pdf_var = tk.BooleanVar(value=False)
-        self.styled_chk = ctk.CTkCheckBox(content, text="Styled PDF Formatting", variable=self.styled_pdf_var, state=tk.DISABLED)
+        self.styled_chk = ctk.CTkCheckBox(content, text="Styled PDF Formatting (MS Word or LibreOffice needed)", variable=self.styled_pdf_var, state=tk.DISABLED)
         self.styled_chk.pack(anchor=tk.W, padx=20, pady=(0, 15))
 
         if not PDF_SUPPORT:

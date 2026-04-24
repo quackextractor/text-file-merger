@@ -119,7 +119,7 @@ def _merge_single_file(outfile, file_path, display_name, dry_run, log_callback, 
             direct_pdf_created = False
 
             # Tier 1: Try MS Word via docx2pdf
-            if is_docx and DOCX2PDF_SUPPORT:
+            if is_docx and styled_pdf and DOCX2PDF_SUPPORT:
                 try:
                     convert_docx(file_path, pdf_path)
                     pdf_list.append(pdf_path)
@@ -129,7 +129,7 @@ def _merge_single_file(outfile, file_path, display_name, dry_run, log_callback, 
                         log_callback(f"MS Word conversion failed: {e}")
 
             # Tier 2: Try LibreOffice Headless
-            if is_docx and not direct_pdf_created:
+            if is_docx and styled_pdf and not direct_pdf_created:
                 try:
                     system = platform.system()
                     if system == "Windows":
