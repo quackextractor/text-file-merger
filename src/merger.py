@@ -1,8 +1,15 @@
 import os
 import shutil
+import tempfile
 from src.config import load_config
 from src.filters import GitIgnoreFilter, _get_ignore_config, _is_file_included
 from src.pdf_utils import convert_to_pdf, PDF_SUPPORT
+
+try:
+    import docx
+    DOCX_SUPPORT = True
+except ImportError:
+    DOCX_SUPPORT = False
 
 
 def _merge_recursive(directory, extension, ignore_set, ignored_ext_set, ignored_files, skip_css,
@@ -62,12 +69,32 @@ def _merge_single_file(outfile, file_path, display_name, dry_run, log_callback, 
             log_callback(f"Would merge: {display_name}")
         return
 
+    is_docx = file_path.lower().endswith('.docx')
+
     if pdf_mode:
         try:
             safe_name = display_name.replace(os.sep, "_").replace("/", "_").replace("\\", "_") + ".pdf"
             pdf_path = os.path.join(pdf_temp_dir, safe_name)
-            convert_to_pdf(file_path, pdf_path, display_name)
+
+            target_txt_path = file_path
+            temp_txt = None
+
+            # Extract docx text to a temporary text file for the PDF compiler
+            if is_docx and DOCX_SUPPORT:
+                doc = docx.Document(file_path)
+                text = "\n".join([para.text for para in doc.paragraphs])
+                temp_txt = tempfile.NamedTemporaryFile(delete=False, mode='w', encoding='utf-8')
+                temp_txt.write(text)
+                temp_txt.close()
+                target_txt_path = temp_txt.name
+
+            convert_to_pdf(target_txt_path, pdf_path, display_name)
             pdf_list.append(pdf_path)
+
+            # Clean up the temporary text file
+            if temp_txt:
+                os.remove(temp_txt.name)
+
             if log_callback:
                 log_callback(f"Prepared PDF: {display_name}")
         except Exception as e:
@@ -76,8 +103,12 @@ def _merge_single_file(outfile, file_path, display_name, dry_run, log_callback, 
     else:
         outfile.write(f"----- {display_name} -----\n")
         try:
-            with open(file_path, "r", encoding="utf-8") as infile:
-                outfile.write(infile.read())
+            if is_docx and DOCX_SUPPORT:
+                doc = docx.Document(file_path)
+                outfile.write("\n".join([para.text for para in doc.paragraphs]))
+            else:
+                with open(file_path, "r", encoding="utf-8") as infile:
+                    outfile.write(infile.read())
             if log_callback:
                 log_callback(f"Merged: {display_name}")
         except Exception as e:

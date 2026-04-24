@@ -2,3 +2,4 @@ tkinterdnd2
 customtkinter
 fpdf2
 pypdf
+python-docx
