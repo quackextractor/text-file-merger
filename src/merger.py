@@ -50,7 +50,7 @@ def _extract_legacy_doc_binary(file_path):
 
 def _merge_recursive(directory, extension, ignore_set, ignored_ext_set, ignored_files, skip_css,
                      cancel_check, dry_run, log_callback, outfile, item_callback=None, git_filter=None,
-                     pdf_mode=False, pdf_temp_dir=None, pdf_list=None, styled_pdf=False):
+                     pdf_mode=False, pdf_temp_dir=None, pdf_list=None, styled_pdf=False, txt_temp_dir=None):
     for root, dirs, files in os.walk(directory):
         if cancel_check and cancel_check():
             break
@@ -71,14 +71,14 @@ def _merge_recursive(directory, extension, ignore_set, ignored_ext_set, ignored_
             if _is_file_included(file, root, directory, extension, ignore_set,
                                  ignored_ext_set, ignored_files, skip_css):
                 rel_path = os.path.relpath(file_path, directory)
-                _merge_single_file(outfile, file_path, rel_path, dry_run, log_callback, pdf_mode, pdf_temp_dir, pdf_list, styled_pdf)
+                _merge_single_file(outfile, file_path, rel_path, dry_run, log_callback, pdf_mode, pdf_temp_dir, pdf_list, styled_pdf, txt_temp_dir)
                 if item_callback:
                     item_callback()
 
 
 def _merge_flat(directory, extension, ignore_set, ignored_ext_set, ignored_files, skip_css,
                 cancel_check, dry_run, log_callback, outfile, item_callback=None, git_filter=None,
-                pdf_mode=False, pdf_temp_dir=None, pdf_list=None, styled_pdf=False):
+                pdf_mode=False, pdf_temp_dir=None, pdf_list=None, styled_pdf=False, txt_temp_dir=None):
     for entry in os.listdir(directory):
         if cancel_check and cancel_check():
             break
@@ -95,12 +95,12 @@ def _merge_flat(directory, extension, ignore_set, ignored_ext_set, ignored_files
 
         if _is_file_included(entry, directory, directory, extension, ignore_set,
                              ignored_ext_set, ignored_files, skip_css):
-            _merge_single_file(outfile, full_path, entry, dry_run, log_callback, pdf_mode, pdf_temp_dir, pdf_list, styled_pdf)
+            _merge_single_file(outfile, full_path, entry, dry_run, log_callback, pdf_mode, pdf_temp_dir, pdf_list, styled_pdf, txt_temp_dir)
             if item_callback:
                 item_callback()
 
 
-def _merge_single_file(outfile, file_path, display_name, dry_run, log_callback, pdf_mode=False, pdf_temp_dir=None, pdf_list=None, styled_pdf=False):
+def _merge_single_file(outfile, file_path, display_name, dry_run, log_callback, pdf_mode=False, pdf_temp_dir=None, pdf_list=None, styled_pdf=False, txt_temp_dir=None):
     if dry_run:
         if log_callback:
             log_callback(f"Would merge: {display_name}")
@@ -108,6 +108,37 @@ def _merge_single_file(outfile, file_path, display_name, dry_run, log_callback, 
 
     is_docx = file_path.lower().endswith('.docx')
     is_doc = file_path.lower().endswith('.doc')
+
+    extracted_text = None
+    text_read_success = False
+
+    if txt_temp_dir or not pdf_mode or (pdf_mode and not styled_pdf):
+        try:
+            if is_docx and DOCX_SUPPORT:
+                doc = docx.Document(file_path)
+                extracted_text = "\n".join([para.text for para in doc.paragraphs])
+            elif is_doc:
+                extracted_text = _extract_legacy_doc_binary(file_path)
+            else:
+                with open(file_path, "r", encoding="utf-8") as infile:
+                    extracted_text = infile.read()
+            text_read_success = True
+        except Exception as e:
+            extracted_text = f"[Error reading file: {e}]"
+            if log_callback:
+                log_callback(f"Error reading {display_name}: {e}")
+
+    if txt_temp_dir and text_read_success:
+        safe_name = display_name.replace(os.sep, "_").replace("/", "_").replace("\\", "_")
+        if not safe_name.lower().endswith(".txt"):
+            safe_name = os.path.splitext(safe_name)[0] + ".txt"
+        txt_out_path = os.path.join(txt_temp_dir, safe_name)
+        try:
+            with open(txt_out_path, "w", encoding="utf-8") as tf:
+                tf.write(extracted_text)
+        except Exception as e:
+            if log_callback:
+                log_callback(f"Failed to save source txt for {display_name}: {e}")
 
     if pdf_mode:
         try:
@@ -169,18 +200,9 @@ def _merge_single_file(outfile, file_path, display_name, dry_run, log_callback, 
 
             # Tier 3: Fallback to Plain Text Extraction
             if not direct_pdf_created:
-                if is_docx and DOCX_SUPPORT:
-                    doc = docx.Document(file_path)
-                    text = "\n".join([para.text for para in doc.paragraphs])
+                if is_docx or is_doc:
                     temp_txt = tempfile.NamedTemporaryFile(delete=False, mode='w', encoding='utf-8')
-                    temp_txt.write(text)
-                    temp_txt.close()
-                    target_txt_path = temp_txt.name
-
-                elif is_doc:
-                    text = _extract_legacy_doc_binary(file_path)
-                    temp_txt = tempfile.NamedTemporaryFile(delete=False, mode='w', encoding='utf-8')
-                    temp_txt.write(text)
+                    temp_txt.write(extracted_text if text_read_success else "")
                     temp_txt.close()
                     target_txt_path = temp_txt.name
 
@@ -198,22 +220,9 @@ def _merge_single_file(outfile, file_path, display_name, dry_run, log_callback, 
                 log_callback(f"Error compiling {display_name}: {e}")
     else:
         outfile.write(f"----- {display_name} -----\n")
-        try:
-            if is_docx and DOCX_SUPPORT:
-                doc = docx.Document(file_path)
-                outfile.write("\n".join([para.text for para in doc.paragraphs]))
-            elif is_doc:
-                outfile.write(_extract_legacy_doc_binary(file_path))
-            else:
-                with open(file_path, "r", encoding="utf-8") as infile:
-                    outfile.write(infile.read())
-
-            if log_callback:
-                log_callback(f"Merged: {display_name}")
-        except Exception as e:
-            outfile.write(f"[Error reading file: {e}]\n")
-            if log_callback:
-                log_callback(f"Error reading {display_name}: {e}")
+        outfile.write(extracted_text if text_read_success else str(extracted_text))
+        if log_callback and text_read_success:
+            log_callback(f"Merged: {display_name}")
         outfile.write("\n")
 
 
@@ -232,6 +241,7 @@ def merge_files(
     use_gitignore=True,
     pdf_mode=False,
     keep_pdf_sources=False,
+    keep_txt_sources=False,
     styled_pdf=False
 ):
     if config is None:
@@ -252,12 +262,24 @@ def merge_files(
         base, _ = os.path.splitext(out_path)
         out_path = base + ".pdf"
 
+    source_dir_name = os.path.basename(os.path.normpath(directory))
+    if not source_dir_name:
+        source_dir_name = "merged_sources"
+
     pdf_temp_dir = None
     pdf_list = []
     if pdf_mode and not dry_run:
-        base_filename = os.path.splitext(os.path.basename(out_path))[0]
-        pdf_temp_dir = os.path.join(out_dir, base_filename)
+        if keep_pdf_sources:
+            pdf_temp_dir = os.path.join(out_dir, source_dir_name, "pdf")
+        else:
+            base_filename = os.path.splitext(os.path.basename(out_path))[0]
+            pdf_temp_dir = os.path.join(out_dir, base_filename)
         os.makedirs(pdf_temp_dir, exist_ok=True)
+
+    txt_temp_dir = None
+    if keep_txt_sources and not dry_run:
+        txt_temp_dir = os.path.join(out_dir, source_dir_name, "txt")
+        os.makedirs(txt_temp_dir, exist_ok=True)
 
     outfile = None
     try:
@@ -268,11 +290,11 @@ def merge_files(
         if recursive:
             _merge_recursive(directory, extension, ignore_set, ignored_ext_set, ignored_files,
                              skip_css, cancel_check, dry_run, log_callback, outfile, item_callback, git_filter,
-                             pdf_mode, pdf_temp_dir, pdf_list, styled_pdf)
+                             pdf_mode, pdf_temp_dir, pdf_list, styled_pdf, txt_temp_dir)
         else:
             _merge_flat(directory, extension, ignore_set, ignored_ext_set, ignored_files,
                         skip_css, cancel_check, dry_run, log_callback, outfile, item_callback, git_filter,
-                        pdf_mode, pdf_temp_dir, pdf_list, styled_pdf)
+                        pdf_mode, pdf_temp_dir, pdf_list, styled_pdf, txt_temp_dir)
 
         if pdf_mode and not dry_run and pdf_list:
             if log_callback:

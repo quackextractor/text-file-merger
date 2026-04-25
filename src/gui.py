@@ -142,6 +142,10 @@ class MergeApp:
         git_chk.pack(anchor=tk.W, pady=(0, 5))
         Tooltip(git_chk, "Automatically read and apply .gitignore files found in directories")
 
+        self.keep_txt_sources_var = tk.BooleanVar(value=False)
+        self.keep_txt_chk = ctk.CTkCheckBox(content, text="Keep source text files", variable=self.keep_txt_sources_var)
+        self.keep_txt_chk.pack(anchor=tk.W, pady=(0, 5))
+
         self.pdf_var = tk.BooleanVar(value=False)
         self.pdf_var.trace_add("write", self.on_pdf_toggle)
         pdf_chk = ctk.CTkCheckBox(content, text="Merge into PDF (NotebookLM)", variable=self.pdf_var)
@@ -162,6 +166,8 @@ class MergeApp:
             Tooltip(pdf_chk, "Creates source PDFs and merges them into one final document")
             Tooltip(self.keep_chk, "Preserves the individual compiled source PDF files in the output directory")
             Tooltip(self.styled_chk, "Applies modern fonts and styling to the output PDF instead of raw text")
+
+        Tooltip(self.keep_txt_chk, "Preserves the individual parsed source text files in the output directory")
 
         btn_frame = ctk.CTkFrame(content, fg_color="transparent")
         btn_frame.pack(fill=tk.X, pady=(10, 10))
@@ -335,6 +341,7 @@ class MergeApp:
             use_gitignore = self.gitignore_var.get()
             pdf_mode = self.pdf_var.get() if hasattr(self, 'pdf_var') else False
             keep_sources = self.keep_sources_var.get() if hasattr(self, 'keep_sources_var') else False
+            keep_txt_sources = self.keep_txt_sources_var.get() if hasattr(self, 'keep_txt_sources_var') else False
             styled_pdf = self.styled_pdf_var.get() if hasattr(self, 'styled_pdf_var') else False
 
             ignore_set, ignored_ext_set, ignored_files = _get_ignore_config(self.config, None, None)
@@ -391,6 +398,7 @@ class MergeApp:
                 use_gitignore=use_gitignore,
                 pdf_mode=pdf_mode,
                 keep_pdf_sources=keep_sources,
+                keep_txt_sources=keep_txt_sources,
                 styled_pdf=styled_pdf
             )
 

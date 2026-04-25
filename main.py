@@ -19,6 +19,7 @@ if __name__ == '__main__':
     parser.add_argument("--no-gitignore", action="store_true", help="Disable auto reading of .gitignore files")
     parser.add_argument("--pdf", action="store_true", help="Merge into a single PDF")
     parser.add_argument("--keep-sources", action="store_true", help="Keep individual source PDFs when merging into a single PDF")
+    parser.add_argument("--keep-sources-txt", action="store_true", help="Keep individual source text files when merging")
     parser.add_argument("--styled-pdf", action="store_true", help="Apply styling to the output PDF")
 
     args, unknown = parser.parse_known_args()
@@ -59,5 +60,6 @@ if __name__ == '__main__':
             use_gitignore=not args.no_gitignore,
             pdf_mode=args.pdf,
             keep_pdf_sources=args.keep_sources,
+            keep_txt_sources=args.keep_sources_txt,
             styled_pdf=args.styled_pdf
         )

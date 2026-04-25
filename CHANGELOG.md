@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-04-25
+### Added
+* **Source Text Preservation**: Added the ability to preserve individual parsed source text files during the merging process.
+* **Interface Controls**: Introduced a `--keep-sources-txt` CLI argument and a corresponding "Keep source text files" checkbox in the GUI.
+### Changed
+* **Directory Structure**: Organized the output directory for kept source files. Preserved files are now cleanly separated into `out/<source-dir-name>/txt` and `out/<source-dir-name>/pdf` subdirectories.
+* **GUI Layout**: Positioned the "Keep source text files" checkbox independently from the PDF options to accurately reflect that text extraction functions independently of PDF compilation.
+
 ## [1.3.0] - 2026-04-24
 ### Added
 * **Word Document Support**: Added support for processing modern `.docx` and legacy `.doc` files.
