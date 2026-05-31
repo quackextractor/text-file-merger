@@ -142,6 +142,11 @@ class MergeApp:
         git_chk.pack(anchor=tk.W, pady=(0, 5))
         Tooltip(git_chk, "Automatically read and apply .gitignore files found in directories")
 
+        self.skip_css_var = tk.BooleanVar(value=self.config.get("skip_css_if_no_ext", True))
+        skip_css_chk = ctk.CTkCheckBox(content, text="Skip CSS files when no target ext.", variable=self.skip_css_var)
+        skip_css_chk.pack(anchor=tk.W, pady=(0, 5))
+        Tooltip(skip_css_chk, "If checked, .css files are ignored unless a specific extension filter is set.")
+
         self.keep_txt_sources_var = tk.BooleanVar(value=False)
         self.keep_txt_chk = ctk.CTkCheckBox(content, text="Keep source text files", variable=self.keep_txt_sources_var)
         self.keep_txt_chk.pack(anchor=tk.W, pady=(0, 5))
@@ -345,7 +350,7 @@ class MergeApp:
             styled_pdf = self.styled_pdf_var.get() if hasattr(self, 'styled_pdf_var') else False
 
             ignore_set, ignored_ext_set, ignored_files = _get_ignore_config(self.config, None, None)
-            skip_css = self.config.get("skip_css_if_no_ext", True)
+            skip_css = self.skip_css_var.get()
             git_filter = GitIgnoreFilter(directory) if use_gitignore else None
 
             work_list = []
