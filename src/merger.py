@@ -106,7 +106,7 @@ def _copy_large_file(outfile, task, log_callback=None):
         log_callback(f"Merged large file: {task.display_name}")
 
 
-def _parallel_text_merge(tasks, out_path, max_workers, cancel_event, large_file_threshold, progress_cb, log_callback):
+def _parallel_text_merge(tasks, out_path, max_workers, cancel_event, large_file_threshold, progress_cb, log_callback, tree_str=None):
     result_queue = queue.PriorityQueue()
     pending = {}
     next_write_idx = 0
@@ -131,6 +131,10 @@ def _parallel_text_merge(tasks, out_path, max_workers, cancel_event, large_file_
         futures = [executor.submit(worker, t) for t in small_tasks]
 
         with open(out_path, 'w', encoding='utf-8', buffering=output_buffer) as outfile:
+            if tree_str:
+                outfile.write("Directory Structure:\n")
+                outfile.write(tree_str)
+                outfile.write("\n\n--- File Contents ---\n\n")
             while next_write_idx < len(tasks):
                 if cancel_event.is_set():
                     for f in futures:
@@ -171,9 +175,13 @@ def _parallel_text_merge(tasks, out_path, max_workers, cancel_event, large_file_
                         progress_cb()
 
 
-def _sequential_text_merge(tasks, out_path, cancel_event, large_file_threshold, progress_cb, log_callback):
+def _sequential_text_merge(tasks, out_path, cancel_event, large_file_threshold, progress_cb, log_callback, tree_str=None):
     output_buffer = 256 * 1024
     with open(out_path, 'w', encoding='utf-8', buffering=output_buffer) as outfile:
+        if tree_str:
+            outfile.write("Directory Structure:\n")
+            outfile.write(tree_str)
+            outfile.write("\n\n--- File Contents ---\n\n")
         for task in tasks:
             if cancel_event.is_set():
                 break
@@ -486,7 +494,14 @@ def merge_files(
     keep_pdf_sources=False,
     keep_txt_sources=False,
     styled_pdf=False,
-    tasks=None
+    tasks=None,
+    is_git=False,
+    git_branch=None,
+    git_tag=None,
+    git_commit=None,
+    git_token=None,
+    include_tree=None,
+    tasks_collected_callback=None
 ):
     if config is None:
         config = load_config()
@@ -503,69 +518,119 @@ def merge_files(
     min_tasks_for_parallel = perf.get("min_tasks_for_parallel", 8)
     pdf_batch_threshold = perf.get("pdf_batch_threshold", 200)
 
-    raw_out_path = output_file or config.get("output_file", "Mono.txt")
-    out_dir = config.get("output_dir", "out")
-    out_path = os.path.join(out_dir, os.path.basename(raw_out_path))
-
-    ignore_set, ignored_ext_tuple, ignored_files = _get_ignore_config(config, ignore_dirs, ignore_exts)
-    skip_css = config.get("skip_css_if_no_ext", True)
-    git_filter = GitIgnoreFilter(directory) if use_gitignore else None
-
-    if tasks is None:
-        from src.collector import collect_files
-        tasks = collect_files(
-            directory=directory,
-            extension=extension,
-            recursive=recursive,
-            ignore_set=ignore_set,
-            ignored_ext_tuple=ignored_ext_tuple,
-            ignored_files=ignored_files,
-            skip_css=skip_css,
-            git_filter=git_filter
-        )
-
-    if not tasks:
-        if log_callback:
-            log_callback("No files found to process.")
-        return None
-
-    if dry_run:
-        for task in tasks:
-            if cancel_event.is_set():
-                break
+    # Git Ingestion logic
+    temp_dir_to_clean = None
+    git_url = None
+    if is_git or (directory and (directory.startswith("http://") or directory.startswith("https://"))):
+        is_git = True
+        git_url = directory
+        temp_dir_to_clean = tempfile.mkdtemp()
+        try:
             if log_callback:
-                log_callback(f"Would merge: {task.display_name}")
-            if item_callback:
-                item_callback()
-        return None
-
-    if pdf_mode:
-        base, _ = os.path.splitext(out_path)
-        out_path = base + ".pdf"
-
-    source_dir_name = os.path.basename(os.path.normpath(directory))
-    if not source_dir_name:
-        source_dir_name = "merged_sources"
-
-    pdf_temp_dir = None
-    pdf_list = []
-    if pdf_mode:
-        if keep_pdf_sources:
-            pdf_temp_dir = os.path.join(out_dir, source_dir_name, "pdf")
-        else:
-            base_filename = os.path.splitext(os.path.basename(out_path))[0]
-            pdf_temp_dir = os.path.join(out_dir, base_filename)
-        os.makedirs(pdf_temp_dir, exist_ok=True)
-
-    txt_temp_dir = None
-    if keep_txt_sources:
-        txt_temp_dir = os.path.join(out_dir, source_dir_name, "txt")
-        os.makedirs(txt_temp_dir, exist_ok=True)
-
-    os.makedirs(out_dir, exist_ok=True)
-    tmp_path = out_path + ".tmp"
+                log_callback(f"Cloning Git repository: {git_url}...")
+            from src.git_utils import clone_repo
+            clone_repo(
+                url=git_url,
+                target_dir=temp_dir_to_clean,
+                branch=git_branch,
+                tag=git_tag,
+                commit=git_commit,
+                token=git_token
+            )
+            directory = temp_dir_to_clean
+        except Exception as e:
+            shutil.rmtree(temp_dir_to_clean, ignore_errors=True)
+            if log_callback:
+                log_callback(f"Git clone failed: {e}")
+            raise e
 
     try:
+        raw_out_path = output_file or config.get("output_file", "Mono.txt")
+        out_dir = config.get("output_dir", "out")
+        out_path = os.path.join(out_dir, os.path.basename(raw_out_path))
+
+        ignore_set, ignored_ext_tuple, ignored_files = _get_ignore_config(config, ignore_dirs, ignore_exts)
+        skip_css = config.get("skip_css_if_no_ext", True)
+        git_filter = GitIgnoreFilter(directory) if use_gitignore else None
+
+        if tasks is None:
+            from src.collector import collect_files
+            tasks = collect_files(
+                directory=directory,
+                extension=extension,
+                recursive=recursive,
+                ignore_set=ignore_set,
+                ignored_ext_tuple=ignored_ext_tuple,
+                ignored_files=ignored_files,
+                skip_css=skip_css,
+                git_filter=git_filter
+            )
+            if tasks_collected_callback:
+                tasks_collected_callback(tasks)
+
+        if not tasks:
+            if log_callback:
+                log_callback("No files found to process.")
+            return None
+
+        # Resolve include_tree parameter
+        if include_tree is None:
+            include_tree = config.get("include_tree", True)
+
+        tree_str = None
+        if include_tree:
+            from src.tree_utils import generate_tree
+            tree_str = generate_tree(tasks, directory)
+
+        if dry_run:
+            for task in tasks:
+                if cancel_event.is_set():
+                    break
+                if log_callback:
+                    log_callback(f"Would merge: {task.display_name}")
+                if item_callback:
+                    item_callback()
+            return {
+                "file_count": len(tasks),
+                "total_size_bytes": sum(t.size for t in tasks),
+                "token_count": 0,
+                "output_path": out_path,
+                "tree": tree_str
+            }
+
+        if pdf_mode:
+            base, _ = os.path.splitext(out_path)
+            out_path = base + ".pdf"
+
+        if is_git:
+            repo_name = git_url.split("/")[-1]
+            if repo_name.endswith(".git"):
+                repo_name = repo_name[:-4]
+            source_dir_name = repo_name
+        else:
+            source_dir_name = os.path.basename(os.path.normpath(directory))
+
+        if not source_dir_name:
+            source_dir_name = "merged_sources"
+
+        pdf_temp_dir = None
+        pdf_list = []
+        if pdf_mode:
+            if keep_pdf_sources:
+                pdf_temp_dir = os.path.join(out_dir, source_dir_name, "pdf")
+            else:
+                base_filename = os.path.splitext(os.path.basename(out_path))[0]
+                pdf_temp_dir = os.path.join(out_dir, base_filename)
+            os.makedirs(pdf_temp_dir, exist_ok=True)
+
+        txt_temp_dir = None
+        if keep_txt_sources:
+            txt_temp_dir = os.path.join(out_dir, source_dir_name, "txt")
+            os.makedirs(txt_temp_dir, exist_ok=True)
+
+        os.makedirs(out_dir, exist_ok=True)
+        tmp_path = out_path + ".tmp"
+
         if pdf_mode:
             _process_pdf_merge(
                 tasks=tasks,
@@ -592,6 +657,24 @@ def merge_files(
                     log_callback("No PDF sources generated.")
                 return None
 
+            # Generate and prepend directory tree in PDF mode
+            if include_tree and tree_str:
+                tree_txt_fd, tree_txt_path = tempfile.mkstemp(suffix=".txt")
+                try:
+                    with os.fdopen(tree_txt_fd, "w", encoding="utf-8") as tf:
+                        tf.write("Directory Structure:\n")
+                        tf.write(tree_str)
+                        tf.write("\n")
+                    tree_pdf_path = os.path.join(pdf_temp_dir, "_directory_structure.pdf")
+                    from src.pdf_utils import convert_to_pdf
+                    convert_to_pdf(tree_txt_path, tree_pdf_path, "Directory Structure", styled=styled_pdf)
+                    pdf_list.insert(0, tree_pdf_path)
+                finally:
+                    try:
+                        os.remove(tree_txt_path)
+                    except Exception:
+                        pass
+
             if log_callback:
                 log_callback("Compiling final PDF structure...")
 
@@ -613,6 +696,23 @@ def merge_files(
             else:
                 if log_callback:
                     log_callback(f"Source files preserved in: {pdf_temp_dir}")
+
+            # Calculate token count on accumulated source text
+            accumulated_text = []
+            if include_tree and tree_str:
+                accumulated_text.append("Directory Structure:\n" + tree_str + "\n\n--- File Contents ---\n\n")
+            for task in tasks:
+                if cancel_event.is_set():
+                    break
+                try:
+                    text_content = _extract_text(task.path, task.kind, log_callback, task.display_name)
+                    accumulated_text.append(f"----- {task.display_name} -----\n{text_content}\n")
+                except Exception:
+                    pass
+            from src.token_utils import estimate_tokens
+            token_count = estimate_tokens("".join(accumulated_text))
+            final_size = os.path.getsize(out_path)
+
         else:
             small_tasks = [t for t in tasks if t.size < large_file_threshold]
             if len(small_tasks) >= min_tasks_for_parallel:
@@ -623,7 +723,8 @@ def merge_files(
                     cancel_event=cancel_event,
                     large_file_threshold=large_file_threshold,
                     progress_cb=item_callback,
-                    log_callback=log_callback
+                    log_callback=log_callback,
+                    tree_str=tree_str
                 )
             else:
                 _sequential_text_merge(
@@ -632,7 +733,8 @@ def merge_files(
                     cancel_event=cancel_event,
                     large_file_threshold=large_file_threshold,
                     progress_cb=item_callback,
-                    log_callback=log_callback
+                    log_callback=log_callback,
+                    tree_str=tree_str
                 )
 
             if cancel_event.is_set():
@@ -644,6 +746,22 @@ def merge_files(
 
             os.replace(tmp_path, out_path)
 
+            # Read merged output to compute final size and token count
+            final_size = os.path.getsize(out_path)
+            with open(out_path, "r", encoding="utf-8", errors="replace") as f:
+                merged_content = f.read()
+            from src.token_utils import estimate_tokens
+            token_count = estimate_tokens(merged_content)
+
+        res = {
+            "file_count": len(tasks),
+            "total_size_bytes": final_size,
+            "token_count": token_count,
+            "output_path": out_path,
+            "tree": tree_str
+        }
+        return res
+
     except Exception as e:
         if os.path.exists(tmp_path):
             try:
@@ -653,5 +771,6 @@ def merge_files(
         if pdf_mode:
             _cleanup_pdf_temp(pdf_temp_dir, pdf_list, keep_pdf_sources)
         raise e
-
-    return out_path
+    finally:
+        if temp_dir_to_clean:
+            shutil.rmtree(temp_dir_to_clean, ignore_errors=True)

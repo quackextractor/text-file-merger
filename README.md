@@ -1,7 +1,7 @@
 # Text File Merger
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Version](https://img.shields.io/badge/version-1.5.0-blue.svg)](https://github.com/quackextractor/text-file-merger)
+[![Version](https://img.shields.io/badge/version-1.6.0-blue.svg)](https://github.com/quackextractor/text-file-merger)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 
 A powerful and user-friendly utility to merge multiple text-based files into a single document. Whether you are a developer consolidating source code or a writer organizing notes, this tool simplifies the process with both Command Line (CLI) and Graphical User (GUI) interfaces.
@@ -9,6 +9,9 @@ A powerful and user-friendly utility to merge multiple text-based files into a s
 ## Features
 
 - **Modern Themed GUI**: Beautiful Interface powered by `CustomTkinter` for a sleek experience.
+- **Git Ingestion**: Clone and merge remote Git repositories directly via URLs (supports branches, tags, and commits).
+- **Directory Tree**: Prepend visual directory folder hierarchy trees using Unicode box characters.
+- **Token Estimation**: Display files processed, size, and estimated tokens using `tiktoken` with fallback.
 - **Background Operations**: Non-blocking threading keeps the app responsive during heavy merges.
 - **Drag & Drop Support**: Drop folders to select your source directory with visual feedback.
 - **File Preview**: Dry-run mode allows you to see exactly which files will be merged.
@@ -54,11 +57,22 @@ Merge all files in a directory recursively:
 python main.py path/to/source -r -o MyMergedFile.txt
 ```
 
+Merge a remote Git repository:
+```bash
+python main.py https://github.com/octocat/Hello-World --git -o HelloMerged.txt
+```
+
 #### CLI Arguments:
-- `directory`: The source directory to scan.
+- `directory`: The source directory or Git repository URL.
 - `extension` (Optional): Filter by a specific file extension (e.g., `.py`).
 - `-r`, `--recursive`: Search subdirectories recursively.
 - `-o`, `--output`: Specify the output filename (saved in the `out/` folder).
+- `--git`: Treat the directory argument as a remote Git repository URL.
+- `--branch`: The branch to checkout.
+- `--tag`: The tag to checkout.
+- `--commit`: The commit hash to checkout.
+- `--git-token`: GitHub PAT token for private repositories.
+- `--no-tree`: Disable visual directory tree prepend.
 
 ## Configuration
 

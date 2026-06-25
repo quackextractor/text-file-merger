@@ -44,6 +44,7 @@
   ],
   "skip_css_if_no_ext": true,
   "use_gitignore": true,
+  "include_tree": true,
   "performance": {
     "max_workers": 0,
     "large_file_threshold_mb": 5,

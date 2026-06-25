@@ -1,6 +1,6 @@
 # Text File Merger - Performance & Architecture Documentation
 
-This document outlines the architecture, pipeline stages, and performance optimizations implemented in version 1.5.0 of the Text File Merger utility.
+This document outlines the architecture, pipeline stages, and performance optimizations implemented in version 1.6.0 of the Text File Merger utility.
 
 ## 1. Architectural Overview
 
@@ -10,9 +10,12 @@ The application is structured into a clean modular package under the `src/` dire
 - **Collector (`src/collector.py`)**: Runs Phase 1 (pre-scan) of the merging process, walking the file tree, applying ignore rules, and building a deterministic ordered list of file tasks.
 - **Config (`src/config.py`)**: Manages default configuration settings and handles configuration loading and deep merging of performance configurations.
 - **Filters (`src/filters.py`)**: Contains ignore filters, including cache-backed pattern compilation for `.gitignore` rules.
-- **Merger (`src/merger.py`)**: Orchestrates the merge pipeline, coordinating sequential streaming, parallel worker execution, atomic filesystem updates, and cancellation events.
+- **Merger (`src/merger.py`)**: Orchestrates the merge pipeline, coordinating sequential streaming, parallel worker execution, atomic filesystem updates, and cancellation events. Includes Git repository ingestion and tree integration.
 - **PDF Utilities (`src/pdf_utils.py`)**: Contains fpdf2 and pypdf helpers, including parallel fpdf2 worker routines and memory-bounded batch PDF joining.
-- **GUI (`src/gui.py`)**: CustomTkinter-based interface incorporating event-driven cancellation and non-blocking background threading utilizing a UI update throttler.
+- **Git Utilities (`src/git_utils.py`)**: Manages shallow clones, branch/tag/commit checkouts, GITHUB_TOKEN integration, and full clone fallback routines.
+- **Token Utilities (`src/token_utils.py`)**: Calculates token count estimates utilizing `tiktoken` with character count fallbacks for LLM-focused workflows.
+- **Tree Utilities (`src/tree_utils.py`)**: Formats visual Unicode directory structure diagrams based on matched merge tasks.
+- **GUI (`src/gui.py`)**: CustomTkinter-based interface incorporating event-driven cancellation, non-blocking background threading utilizing a UI update throttler, Git URL ingestion options, and a directory structure viewer.
 
 ---
 

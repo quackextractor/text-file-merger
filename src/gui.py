@@ -88,7 +88,7 @@ class MergeApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Text Merger GUI")
-        self.root.geometry("650x650")
+        self.root.geometry("650x800")
 
         self.config_path = "config.json"
         self.history_path = "history.json"
@@ -127,8 +127,8 @@ class MergeApp:
         content = ctk.CTkFrame(self.main_frame, fg_color="transparent")
         content.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
 
-        src_lbl = ctk.CTkLabel(content, text="Source Directory (Drag and Drop or Paste):")
-        src_lbl.pack(anchor=tk.W, pady=(5, 2))
+        self.src_lbl = ctk.CTkLabel(content, text="Source Directory (Drag and Drop or Paste):")
+        self.src_lbl.pack(anchor=tk.W, pady=(5, 2))
         self.dir_var = tk.StringVar()
         self.dir_var.trace_add("write", self.on_dir_change)
 
@@ -137,8 +137,10 @@ class MergeApp:
         self.dir_combo = ctk.CTkComboBox(dir_frame, variable=self.dir_var, values=list(self.history.keys()))
         self.dir_combo.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
 
-        ctk.CTkButton(dir_frame, text="Open Folder", width=90, command=self.open_source_folder).pack(side=tk.RIGHT)
-        ctk.CTkButton(dir_frame, text="Browse", width=80, command=self.browse_dir).pack(side=tk.RIGHT, padx=(0, 5))
+        self.open_src_btn = ctk.CTkButton(dir_frame, text="Open Folder", width=90, command=self.open_source_folder)
+        self.open_src_btn.pack(side=tk.RIGHT)
+        self.browse_src_btn = ctk.CTkButton(dir_frame, text="Browse", width=80, command=self.browse_dir)
+        self.browse_src_btn.pack(side=tk.RIGHT, padx=(0, 5))
 
         if TkinterDnD:
             self.dir_combo.drop_target_register(DND_FILES)
@@ -187,6 +189,32 @@ class MergeApp:
         skip_css_chk.pack(anchor=tk.W, pady=(0, 5))
         Tooltip(skip_css_chk, "If checked, .css files are ignored unless a specific extension filter is set.")
 
+        self.is_git_var = tk.BooleanVar(value=False)
+        self.is_git_var.trace_add("write", self.on_git_toggle)
+        self.git_repo_chk = ctk.CTkCheckBox(content, text="Git Repository", variable=self.is_git_var)
+        self.git_repo_chk.pack(anchor=tk.W, pady=(0, 5))
+        Tooltip(self.git_repo_chk, "Clone and merge from a remote Git repository URL")
+
+        # Git Ref and Token Inputs sub-frame (hidden by default)
+        self.git_frame = ctk.CTkFrame(content, fg_color="transparent")
+
+        git_ref_lbl = ctk.CTkLabel(self.git_frame, text="Ref (Branch/Tag/Commit):")
+        git_ref_lbl.pack(side=tk.LEFT, padx=(0, 5))
+        self.git_ref_var = tk.StringVar()
+        self.git_ref_entry = ctk.CTkEntry(self.git_frame, textvariable=self.git_ref_var, width=120)
+        self.git_ref_entry.pack(side=tk.LEFT, padx=(0, 10))
+
+        git_token_lbl = ctk.CTkLabel(self.git_frame, text="Token:")
+        git_token_lbl.pack(side=tk.LEFT, padx=(0, 5))
+        self.git_token_var = tk.StringVar()
+        self.git_token_entry = ctk.CTkEntry(self.git_frame, textvariable=self.git_token_var, show="*", width=120)
+        self.git_token_entry.pack(side=tk.LEFT)
+
+        self.include_tree_var = tk.BooleanVar(value=self.config.get("include_tree", True))
+        tree_chk = ctk.CTkCheckBox(content, text="Include directory tree", variable=self.include_tree_var)
+        tree_chk.pack(anchor=tk.W, pady=(0, 5))
+        Tooltip(tree_chk, "Prepend a visual folder hierarchy tree to the output")
+
         self.keep_txt_sources_var = tk.BooleanVar(value=False)
         self.keep_txt_chk = ctk.CTkCheckBox(content, text="Keep source text files", variable=self.keep_txt_sources_var)
         self.keep_txt_chk.pack(anchor=tk.W, pady=(0, 5))
@@ -229,13 +257,30 @@ class MergeApp:
         self.progress.set(0)
 
         self.log_text = ctk.CTkTextbox(content, state=tk.DISABLED, height=150)
-        self.log_text.pack(fill=tk.BOTH, expand=True)
+        self.log_text.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+
+        self.tree_label = ctk.CTkLabel(content, text="Directory Structure:")
+        self.tree_label.pack(anchor=tk.W, pady=(5, 2))
+        self.tree_text = ctk.CTkTextbox(content, state=tk.DISABLED, height=120)
+        self.tree_text.pack(fill=tk.BOTH, expand=True)
 
     def log_message(self, text):
         self.log_text.configure(state=tk.NORMAL)
         self.log_text.insert(tk.END, text + "\n")
         self.log_text.see(tk.END)
         self.log_text.configure(state=tk.DISABLED)
+
+    def on_git_toggle(self, *args):
+        if self.is_git_var.get():
+            self.src_lbl.configure(text="Source Git URL (http/https):")
+            self.git_frame.pack(fill=tk.X, pady=(0, 10))
+            self.browse_src_btn.configure(state=tk.DISABLED)
+            self.open_src_btn.configure(state=tk.DISABLED)
+        else:
+            self.src_lbl.configure(text="Source Directory (Drag and Drop or Paste):")
+            self.git_frame.pack_forget()
+            self.browse_src_btn.configure(state=tk.NORMAL)
+            self.open_src_btn.configure(state=tk.NORMAL)
 
     def on_pdf_toggle(self, *args):
         current_name = self.out_var.get()
@@ -376,6 +421,10 @@ class MergeApp:
     def execute_merge(self, dry_run=False):
         self.progress.set(0)
         self.cancel_event.clear()
+        self.tree_text.configure(state=tk.NORMAL)
+        self.tree_text.delete("1.0", tk.END)
+        self.tree_text.configure(state=tk.DISABLED)
+
         mode_text = "Previewing" if dry_run else "Merging"
         self.log_message(f"Starting {mode_text}...")
 
@@ -388,27 +437,36 @@ class MergeApp:
             keep_sources = self.keep_sources_var.get() if hasattr(self, 'keep_sources_var') else False
             keep_txt_sources = self.keep_txt_sources_var.get() if hasattr(self, 'keep_txt_sources_var') else False
             styled_pdf = self.styled_pdf_var.get() if hasattr(self, 'styled_pdf_var') else False
+            include_tree = self.include_tree_var.get() if hasattr(self, 'include_tree_var') else True
 
-            ignore_set, ignored_ext_tuple, ignored_files = _get_ignore_config(self.config, None, None)
-            skip_css = self.skip_css_var.get()
-            git_filter = GitIgnoreFilter(directory) if use_gitignore else None
+            is_git = self.is_git_var.get() or (directory and (directory.startswith("http://") or directory.startswith("https://")))
+            git_branch = self.git_ref_var.get().strip() or None if is_git else None
+            git_token = self.git_token_var.get().strip() or None if is_git else None
 
-            from src.collector import collect_files
-            tasks = collect_files(
-                directory=directory,
-                extension=ext,
-                recursive=recursive,
-                ignore_set=ignore_set,
-                ignored_ext_tuple=ignored_ext_tuple,
-                ignored_files=ignored_files,
-                skip_css=skip_css,
-                git_filter=git_filter
-            )
+            tasks = None
+            total_files = 0
 
-            total_files = len(tasks)
-            if total_files == 0:
-                self.log_message("No files found to process.")
-                return
+            # If it's a local folder, pre-collect tasks to know progress.
+            if not is_git:
+                ignore_set, ignored_ext_tuple, ignored_files = _get_ignore_config(self.config, None, None)
+                skip_css = self.skip_css_var.get()
+                git_filter = GitIgnoreFilter(directory) if use_gitignore else None
+
+                from src.collector import collect_files
+                tasks = collect_files(
+                    directory=directory,
+                    extension=ext,
+                    recursive=recursive,
+                    ignore_set=ignore_set,
+                    ignored_ext_tuple=ignored_ext_tuple,
+                    ignored_files=ignored_files,
+                    skip_css=skip_css,
+                    git_filter=git_filter
+                )
+                total_files = len(tasks)
+                if total_files == 0:
+                    self.log_message("No files found to process.")
+                    return
 
             perf = self.config.get("performance", {})
             interval_ms = perf.get("progress_update_interval_ms", 100)
@@ -416,17 +474,27 @@ class MergeApp:
 
             processed_count = 0
 
+            def tasks_collected_callback(collected_tasks):
+                nonlocal total_files
+                total_files = len(collected_tasks)
+
             def item_callback():
                 nonlocal processed_count
                 processed_count += 1
-                progress_val = processed_count / total_files
-                throttler.report(progress_val)
+                if total_files > 0:
+                    progress_val = processed_count / total_files
+                    throttler.report(progress_val)
+                else:
+                    throttler.report(0.0)
 
             def throttled_log(msg):
-                progress_val = processed_count / total_files
-                throttler.report(progress_val, msg)
+                if total_files > 0:
+                    progress_val = processed_count / total_files
+                    throttler.report(progress_val, msg)
+                else:
+                    throttler.report(0.0, msg)
 
-            final_out_path = merge_files(
+            res = merge_files(
                 directory=directory,
                 config=self.config,
                 extension=ext,
@@ -441,7 +509,12 @@ class MergeApp:
                 keep_pdf_sources=keep_sources,
                 keep_txt_sources=keep_txt_sources,
                 styled_pdf=styled_pdf,
-                tasks=tasks
+                tasks=tasks,
+                is_git=is_git,
+                git_branch=git_branch,
+                git_token=git_token,
+                include_tree=include_tree,
+                tasks_collected_callback=tasks_collected_callback
             )
 
             throttler.force_flush()
@@ -450,12 +523,31 @@ class MergeApp:
                 self.log_message("Operation Cancelled.")
                 self.progress.set(0)
             else:
-                if not dry_run:
-                    if final_out_path:
+                if res:
+                    final_out_path = res["output_path"]
+                    if not dry_run:
                         self.last_output_path = final_out_path
                         self.save_history(directory, os.path.basename(final_out_path))
-                    self.update_combo_list()
-                self.log_message("Merge completed successfully." if not dry_run else "Preview finished.")
+                        self.update_combo_list()
+
+                    # Update directory tree text box
+                    if "tree" in res and res["tree"]:
+                        self.tree_text.configure(state=tk.NORMAL)
+                        self.tree_text.delete("1.0", tk.END)
+                        self.tree_text.insert(tk.END, res["tree"])
+                        self.tree_text.configure(state=tk.DISABLED)
+
+                    # Update log with summary
+                    self.log_message("\n--- Merge Summary ---")
+                    self.log_message(f"Files processed: {res['file_count']}")
+                    if not dry_run:
+                        self.log_message(f"Total size: {res['total_size_bytes'] / 1024:.1f} KB")
+                        self.log_message(f"Estimated tokens: {res['token_count']:,}")
+                        self.log_message(f"Output path: {final_out_path}\n")
+                    else:
+                        self.log_message("Preview finished.\n")
+                else:
+                    self.log_message("Operation completed with no output.")
 
         except Exception as e:
             self.log_message(f"Error: {e}")

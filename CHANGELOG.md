@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-06-25
+### Added
+* **Token Counting**: Integrated `tiktoken` for accurate token estimation with fallback to character count estimation (`len // 4`). Shows number of files, total size, and token counts upon merge completion.
+* **Git Ingestion**: Added the ability to clone and merge directly from remote Git URLs, supporting branch, tag, or commit ref checkouts, GITHUB_TOKEN PAT embedding, and automatic fallback to full clone.
+* **Directory Tree Prepending**: Prepends a text-based visual folder hierarchy tree (Unicode box drawing) to text/PDF merges. Adjustable via CLI `--no-tree` and GUI checkbox.
+* **UI Expansion**: Expanded GUI window size to support Git Repository toggle controls, Branch/Token entries, and a read-only visual Directory Structure tree textbox.
+
 ## [1.5.0] - 2026-06-25
 ### Added
 * **Two-Phase Pipeline**: Implemented file pre-scanning (Phase 1) using a new `collect_files` module for accurate progress calculation, safe parallelization, and responsive cancellation.

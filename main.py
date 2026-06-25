@@ -21,6 +21,12 @@ if __name__ == '__main__':
     parser.add_argument("--keep-sources", action="store_true", help="Keep individual source PDFs when merging into a single PDF")
     parser.add_argument("--keep-sources-txt", action="store_true", help="Keep individual source text files when merging")
     parser.add_argument("--styled-pdf", action="store_true", help="Apply styling to the output PDF")
+    parser.add_argument("--git", action="store_true", help="Treat directory as Git repository URL")
+    parser.add_argument("--branch", default=None, help="Git branch to checkout")
+    parser.add_argument("--tag", default=None, help="Git tag to checkout")
+    parser.add_argument("--commit", default=None, help="Git commit hash to checkout")
+    parser.add_argument("--git-token", default=None, help="GitHub Personal Access Token for private repositories")
+    parser.add_argument("--no-tree", action="store_true", help="Disable prepend of directory tree structure to output")
 
     args, unknown = parser.parse_known_args()
 
@@ -51,7 +57,7 @@ if __name__ == '__main__':
         app = MergeApp(root)
         root.mainloop()
     else:
-        merge_files(
+        res = merge_files(
             args.directory,
             config=None,
             extension=args.extension,
@@ -61,5 +67,15 @@ if __name__ == '__main__':
             pdf_mode=args.pdf,
             keep_pdf_sources=args.keep_sources,
             keep_txt_sources=args.keep_sources_txt,
-            styled_pdf=args.styled_pdf
+            styled_pdf=args.styled_pdf,
+            is_git=args.git,
+            git_branch=args.branch,
+            git_tag=args.tag,
+            git_commit=args.commit,
+            git_token=args.git_token,
+            include_tree=not args.no_tree
         )
+        if res:
+            print(f"Files merged: {res['file_count']}")
+            print(f"Total size: {res['total_size_bytes'] / 1024:.1f} KB")
+            print(f"Estimated tokens: {res['token_count']:,}")

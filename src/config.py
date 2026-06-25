@@ -36,6 +36,7 @@ def get_bundled_config():
         ],
         "skip_css_if_no_ext": True,
         "use_gitignore": True,
+        "include_tree": True,
         "performance": {
             "max_workers": 0,
             "large_file_threshold_mb": 5,
