@@ -583,6 +583,25 @@ def merge_files(
             tree_str = generate_tree(tasks, directory)
 
         if dry_run:
+            token_count = 0
+            try:
+                accumulated_text = []
+                if include_tree and tree_str:
+                    accumulated_text.append("Directory Structure:\n" + tree_str + "\n\n--- File Contents ---\n\n")
+                for task in tasks:
+                    if cancel_event.is_set():
+                        break
+                    try:
+                        text_content = _extract_text(task.path, task.kind, log_callback, task.display_name)
+                        accumulated_text.append(f"----- {task.display_name} -----\n{text_content}\n")
+                    except Exception:
+                        pass
+                from src.token_utils import estimate_tokens
+                token_count = estimate_tokens("".join(accumulated_text))
+            except Exception as e:
+                if log_callback:
+                    log_callback(f"Failed to calculate preview token count: {e}")
+
             for task in tasks:
                 if cancel_event.is_set():
                     break
@@ -593,7 +612,7 @@ def merge_files(
             return {
                 "file_count": len(tasks),
                 "total_size_bytes": sum(t.size for t in tasks),
-                "token_count": 0,
+                "token_count": token_count,
                 "output_path": out_path,
                 "tree": tree_str
             }

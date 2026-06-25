@@ -409,7 +409,8 @@ class MergeApp:
 
     def run_merge(self):
         directory = self.dir_var.get()
-        if not os.path.isdir(directory):
+        is_git = self.is_git_var.get() or (directory and (directory.startswith("http://") or directory.startswith("https://")))
+        if not is_git and not os.path.isdir(directory):
             self.log_message("Error: Invalid Source Directory")
             return
 
@@ -537,20 +538,68 @@ class MergeApp:
                         self.tree_text.insert(tk.END, res["tree"])
                         self.tree_text.configure(state=tk.DISABLED)
 
+                    # Format estimated tokens
+                    token_val = res["token_count"]
+                    if token_val >= 1000:
+                        formatted_tokens = f"{token_val / 1000:.1f}k"
+                    else:
+                        formatted_tokens = str(token_val)
+
                     # Update log with summary
-                    self.log_message("\n--- Merge Summary ---")
+                    mode_name = "Preview" if dry_run else "Merge"
+                    self.log_message(f"\n--- {mode_name} Summary ---")
                     self.log_message(f"Files processed: {res['file_count']}")
+                    self.log_message(f"Total size: {res['total_size_bytes'] / 1024:.1f} KB")
+                    self.log_message(f"Estimated tokens: {formatted_tokens}")
                     if not dry_run:
-                        self.log_message(f"Total size: {res['total_size_bytes'] / 1024:.1f} KB")
-                        self.log_message(f"Estimated tokens: {res['token_count']:,}")
                         self.log_message(f"Output path: {final_out_path}\n")
                     else:
                         self.log_message("Preview finished.\n")
+
+                    # Open summary pop-up window on main thread
+                    self.root.after(0, lambda: self.show_summary_window(res, dry_run))
                 else:
                     self.log_message("Operation completed with no output.")
 
         except Exception as e:
             self.log_message(f"Error: {e}")
+
+    def show_summary_window(self, res, dry_run=False):
+        summary_win = ctk.CTkToplevel(self.root)
+        summary_win.title("Preview Summary" if dry_run else "Merge Summary")
+        summary_win.geometry("450x300")
+        summary_win.transient(self.root)
+        summary_win.grab_set()
+
+        frame = ctk.CTkFrame(summary_win, fg_color="transparent")
+        frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+
+        title = "Preview Completed Successfully" if dry_run else "Merge Completed Successfully"
+        ctk.CTkLabel(frame, text=title, font=("Helvetica", 16, "bold")).pack(pady=(0, 20))
+
+        stats_frame = ctk.CTkFrame(frame, fg_color="transparent")
+        stats_frame.pack(fill=tk.X, pady=(0, 20))
+
+        def add_stat(label, val):
+            row = ctk.CTkFrame(stats_frame, fg_color="transparent")
+            row.pack(fill=tk.X, pady=4)
+            ctk.CTkLabel(row, text=label, font=("Helvetica", 12, "bold"), width=150, anchor=tk.W).pack(side=tk.LEFT)
+            ctk.CTkLabel(row, text=val, font=("Helvetica", 12), anchor=tk.W).pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        token_val = res["token_count"]
+        if token_val >= 1000:
+            formatted_tokens = f"{token_val / 1000:.1f}k"
+        else:
+            formatted_tokens = str(token_val)
+
+        add_stat("Files Processed:", str(res["file_count"]))
+        add_stat("Total Size:", f"{res['total_size_bytes'] / 1024:.1f} KB")
+        add_stat("Estimated Tokens:", formatted_tokens)
+
+        if not dry_run:
+            add_stat("Output Path:", res["output_path"])
+
+        ctk.CTkButton(frame, text="Close", width=100, command=summary_win.destroy).pack(side=tk.BOTTOM, pady=(10, 0))
 
     def open_settings(self):
         settings_win = ctk.CTkToplevel(self.root)

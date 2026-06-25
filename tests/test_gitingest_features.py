@@ -180,3 +180,30 @@ def test_merge_files_git_integration(mock_clone, tmp_path, mocker):
     content = merged_file.read_text(encoding="utf-8")
     assert "file_in_git.txt" in content
     assert "Git Content" in content
+
+
+def test_merge_files_dry_run_token_count(tmp_path, mocker):
+    src_dir = tmp_path / "src_dry"
+    src_dir.mkdir()
+    (src_dir / "file1.txt").write_text("Hello World!")
+
+    out_dir = tmp_path / "out_dry"
+
+    mock_conf = {
+        "output_file": "dry_merged.txt",
+        "output_dir": str(out_dir),
+        "ignored_dirs": [],
+        "ignored_extensions": [],
+        "ignored_files": [],
+        "skip_css_if_no_ext": False,
+        "include_tree": False
+    }
+    mocker.patch("src.merger.load_config", return_value=mock_conf)
+
+    res = merge_files(str(src_dir), output_file="dry_merged.txt", use_gitignore=False, dry_run=True)
+
+    assert res is not None
+    assert res["file_count"] == 1
+    assert res["token_count"] > 0
+    merged_file = out_dir / "dry_merged.txt"
+    assert not merged_file.exists()

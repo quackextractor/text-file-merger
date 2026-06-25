@@ -76,6 +76,11 @@ if __name__ == '__main__':
             include_tree=not args.no_tree
         )
         if res:
+            token_val = res['token_count']
+            if token_val >= 1000:
+                formatted_tokens = f"{token_val / 1000:.1f}k"
+            else:
+                formatted_tokens = str(token_val)
             print(f"Files merged: {res['file_count']}")
             print(f"Total size: {res['total_size_bytes'] / 1024:.1f} KB")
-            print(f"Estimated tokens: {res['token_count']:,}")
+            print(f"Estimated tokens: {formatted_tokens}")
