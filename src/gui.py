@@ -269,20 +269,20 @@ class MergeApp:
         self.summary_frame.pack(side=tk.RIGHT, fill=tk.BOTH)
         self.summary_frame.pack_propagate(False)
 
-        summary_title = ctk.CTkLabel(self.summary_frame, text="Merge / Preview Summary", font=("Helvetica", 12, "bold"))
-        summary_title.pack(anchor=tk.W, padx=10, pady=(10, 5))
+        summary_title = ctk.CTkLabel(self.summary_frame, text="Merge / Preview Summary", font=("Helvetica", 12, "bold"), height=24)
+        summary_title.pack(anchor=tk.W, padx=10, pady=(6, 2))
 
-        self.summary_files_lbl = ctk.CTkLabel(self.summary_frame, text="Files Processed: -", font=("Helvetica", 11), anchor=tk.W)
-        self.summary_files_lbl.pack(fill=tk.X, padx=10, pady=2)
+        self.summary_files_lbl = ctk.CTkLabel(self.summary_frame, text="Files Processed: -", font=("Helvetica", 11), anchor=tk.W, height=18)
+        self.summary_files_lbl.pack(fill=tk.X, padx=10, pady=1)
 
-        self.summary_size_lbl = ctk.CTkLabel(self.summary_frame, text="Total Size: -", font=("Helvetica", 11), anchor=tk.W)
-        self.summary_size_lbl.pack(fill=tk.X, padx=10, pady=2)
+        self.summary_size_lbl = ctk.CTkLabel(self.summary_frame, text="Total Size: -", font=("Helvetica", 11), anchor=tk.W, height=18)
+        self.summary_size_lbl.pack(fill=tk.X, padx=10, pady=1)
 
-        self.summary_tokens_lbl = ctk.CTkLabel(self.summary_frame, text="Estimated Tokens: -", font=("Helvetica", 11), anchor=tk.W)
-        self.summary_tokens_lbl.pack(fill=tk.X, padx=10, pady=2)
+        self.summary_tokens_lbl = ctk.CTkLabel(self.summary_frame, text="Estimated Tokens: -", font=("Helvetica", 11), anchor=tk.W, height=18)
+        self.summary_tokens_lbl.pack(fill=tk.X, padx=10, pady=1)
 
-        self.summary_path_lbl = ctk.CTkLabel(self.summary_frame, text="Output: -", font=("Helvetica", 11), anchor=tk.W, wraplength=220)
-        self.summary_path_lbl.pack(fill=tk.X, padx=10, pady=2)
+        self.summary_path_lbl = ctk.CTkLabel(self.summary_frame, text="Output: -", font=("Helvetica", 11), anchor=tk.W, wraplength=220, height=18)
+        self.summary_path_lbl.pack(fill=tk.X, padx=10, pady=1)
 
         self.tree_label = ctk.CTkLabel(content, text="Directory Structure:")
         self.tree_label.pack(anchor=tk.W, pady=(5, 2))
