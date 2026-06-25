@@ -3,6 +3,7 @@ import os
 import json
 import threading
 import subprocess
+import time
 import tkinter as tk
 from tkinter import filedialog
 import customtkinter as ctk
@@ -16,6 +17,45 @@ from src.config import load_config
 from src.filters import GitIgnoreFilter, _get_ignore_config, _is_file_included
 from src.merger import merge_files
 from src.pdf_utils import PDF_SUPPORT
+
+
+class ProgressThrottler:
+    def __init__(self, progress_widget, log_widget, root, min_interval_ms=100):
+        self.progress = progress_widget
+        self.log = log_widget
+        self.root = root
+        self.min_interval = min_interval_ms / 1000
+        self._last_flush = 0
+        self._lock = threading.Lock()
+        self._pending_progress = 0.0
+        self._logs = []
+
+    def report(self, progress_value, message=None):
+        with self._lock:
+            self._pending_progress = progress_value
+            if message:
+                self._logs.append(message)
+            now = time.time()
+            if now - self._last_flush < self.min_interval:
+                return
+            self._last_flush = now
+        self.root.after(0, self._flush)
+
+    def force_flush(self):
+        self.root.after(0, self._flush)
+
+    def _flush(self):
+        with self._lock:
+            val = self._pending_progress
+            msgs = self._logs[:]
+            self._logs.clear()
+        self.progress.set(val)
+        if msgs:
+            self.log.configure(state=tk.NORMAL)
+            for msg in msgs:
+                self.log.insert(tk.END, msg + "\n")
+            self.log.see(tk.END)
+            self.log.configure(state=tk.DISABLED)
 
 
 class Tooltip:
@@ -54,7 +94,7 @@ class MergeApp:
         self.history_path = "history.json"
         self.config = load_config(self.config_path)
         self.history = self.load_history()
-        self.cancel_flag = False
+        self.cancel_event = threading.Event()
         self.last_output_path = None
 
         self.setup_ui()
@@ -313,7 +353,7 @@ class MergeApp:
         self.dir_combo.configure(values=list(self.history.keys()))
 
     def cancel_operation(self):
-        self.cancel_flag = True
+        self.cancel_event.set()
         self.log_message("Requesting cancellation...")
 
     def run_preview(self):
@@ -335,7 +375,7 @@ class MergeApp:
 
     def execute_merge(self, dry_run=False):
         self.progress.set(0)
-        self.cancel_flag = False
+        self.cancel_event.clear()
         mode_text = "Previewing" if dry_run else "Merging"
         self.log_message(f"Starting {mode_text}...")
 
@@ -349,46 +389,42 @@ class MergeApp:
             keep_txt_sources = self.keep_txt_sources_var.get() if hasattr(self, 'keep_txt_sources_var') else False
             styled_pdf = self.styled_pdf_var.get() if hasattr(self, 'styled_pdf_var') else False
 
-            ignore_set, ignored_ext_set, ignored_files = _get_ignore_config(self.config, None, None)
+            ignore_set, ignored_ext_tuple, ignored_files = _get_ignore_config(self.config, None, None)
             skip_css = self.skip_css_var.get()
             git_filter = GitIgnoreFilter(directory) if use_gitignore else None
 
-            work_list = []
-            if recursive:
-                for root, dirs, files in os.walk(directory):
-                    if git_filter:
-                        dirs[:] = [d for d in dirs if not git_filter.is_ignored(os.path.join(root, d), is_dir=True)]
+            from src.collector import collect_files
+            tasks = collect_files(
+                directory=directory,
+                extension=ext,
+                recursive=recursive,
+                ignore_set=ignore_set,
+                ignored_ext_tuple=ignored_ext_tuple,
+                ignored_files=ignored_files,
+                skip_css=skip_css,
+                git_filter=git_filter
+            )
 
-                    dirs[:] = [d for d in dirs if d not in ignore_set]
-                    for f in files:
-                        f_path = os.path.join(root, f)
-                        if git_filter and git_filter.is_ignored(f_path, is_dir=False):
-                            continue
-
-                        if _is_file_included(f, root, directory, ext, ignore_set,
-                                             ignored_ext_set, ignored_files, skip_css):
-                            work_list.append(f_path)
-            else:
-                for f in os.listdir(directory):
-                    f_path = os.path.join(directory, f)
-                    if os.path.isfile(f_path):
-                        if git_filter and git_filter.is_ignored(f_path, is_dir=False):
-                            continue
-
-                        if _is_file_included(f, directory, directory, ext, ignore_set,
-                                             ignored_ext_set, ignored_files, skip_css):
-                            work_list.append(f_path)
-
-            total_files = len(work_list)
+            total_files = len(tasks)
             if total_files == 0:
                 self.log_message("No files found to process.")
                 return
 
-            processed_count = [0]
+            perf = self.config.get("performance", {})
+            interval_ms = perf.get("progress_update_interval_ms", 100)
+            throttler = ProgressThrottler(self.progress, self.log_text, self.root, interval_ms)
 
-            def progress_callback():
-                processed_count[0] += 1
-                self.progress.set(processed_count[0] / total_files)
+            processed_count = 0
+
+            def item_callback():
+                nonlocal processed_count
+                processed_count += 1
+                progress_val = processed_count / total_files
+                throttler.report(progress_val)
+
+            def throttled_log(msg):
+                progress_val = processed_count / total_files
+                throttler.report(progress_val, msg)
 
             final_out_path = merge_files(
                 directory=directory,
@@ -396,19 +432,23 @@ class MergeApp:
                 extension=ext,
                 recursive=recursive,
                 output_file=self.out_var.get(),
-                cancel_check=lambda: self.cancel_flag,
+                cancel_event=self.cancel_event,
                 dry_run=dry_run,
-                log_callback=self.log_message,
-                item_callback=progress_callback,
+                log_callback=throttled_log,
+                item_callback=item_callback,
                 use_gitignore=use_gitignore,
                 pdf_mode=pdf_mode,
                 keep_pdf_sources=keep_sources,
                 keep_txt_sources=keep_txt_sources,
-                styled_pdf=styled_pdf
+                styled_pdf=styled_pdf,
+                tasks=tasks
             )
 
-            if self.cancel_flag:
+            throttler.force_flush()
+
+            if self.cancel_event.is_set():
                 self.log_message("Operation Cancelled.")
+                self.progress.set(0)
             else:
                 if not dry_run:
                     if final_out_path:

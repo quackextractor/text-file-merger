@@ -1,7 +1,7 @@
 # Text File Merger
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Version](https://img.shields.io/badge/version-1.4.0-blue.svg)](https://github.com/quackextractor/text-file-merger)
+[![Version](https://img.shields.io/badge/version-1.5.0-blue.svg)](https://github.com/quackextractor/text-file-merger)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 
 A powerful and user-friendly utility to merge multiple text-based files into a single document. Whether you are a developer consolidating source code or a writer organizing notes, this tool simplifies the process with both Command Line (CLI) and Graphical User (GUI) interfaces.
@@ -45,13 +45,13 @@ A powerful and user-friendly utility to merge multiple text-based files into a s
 ### GUI Mode (Default)
 Run without arguments to launch the graphical interface:
 ```bash
-python merge_texts.py
+python main.py
 ```
 
 ### CLI Mode
 Merge all files in a directory recursively:
 ```bash
-python merge_texts.py path/to/source -r -o MyMergedFile.txt
+python main.py path/to/source -r -o MyMergedFile.txt
 ```
 
 #### CLI Arguments:
@@ -84,7 +84,7 @@ pytest tests/
 ### Linting
 Check code quality using `flake8`:
 ```bash
-flake8 merge_texts.py
+flake8 main.py
 ```
 
 ## License

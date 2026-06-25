@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-06-25
+### Added
+* **Two-Phase Pipeline**: Implemented file pre-scanning (Phase 1) using a new `collect_files` module for accurate progress calculation, safe parallelization, and responsive cancellation.
+* **Parallel Text Merging**: Accelerated merges using `ThreadPoolExecutor` for files under the performance threshold.
+* **Streaming for Large Files**: Stream files exceeding 5MB directly using `shutil.copyfileobj` to prevent excessive RAM utilization.
+* **Atomic Merges**: Merges now write to a `.tmp` file and perform an atomic `os.replace` on success, preventing corruption.
+* **Batch LibreOffice Conversion**: Feeds multiple DOCX/DOC files into a single headless LibreOffice call for a massive speed boost.
+* **Parallel PDF Fallback**: Plain text to PDF conversion is parallelized using processes/threads.
+* **GUI Responsiveness**: Added `ProgressThrottler` to throttle progress bar updates and logs (flushed every 100ms), and replaced cancellation flags with standard thread-safe `threading.Event` objects.
+* **Configurable Performance Settings**: Added performance settings block to `config.json` and `src/config.py` for advanced tuning.
+
 ## [1.4.0] - 2026-04-25
 ### Added
 * **Source Text Preservation**: Added the ability to preserve individual parsed source text files during the merging process.

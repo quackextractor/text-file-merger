@@ -43,5 +43,15 @@
     ".sln"
   ],
   "skip_css_if_no_ext": true,
-  "use_gitignore": true
+  "use_gitignore": true,
+  "performance": {
+    "max_workers": 0,
+    "large_file_threshold_mb": 5,
+    "output_buffer_kb": 256,
+    "progress_update_interval_ms": 100,
+    "batch_libreoffice": true,
+    "parallel_pdf_fallback": true,
+    "min_tasks_for_parallel": 8,
+    "pdf_batch_threshold": 200
+  }
 }

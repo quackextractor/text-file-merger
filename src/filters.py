@@ -1,5 +1,6 @@
 import os
 import fnmatch
+import re
 
 
 class GitIgnoreFilter:
@@ -19,7 +20,26 @@ class GitIgnoreFilter:
                     for line in f:
                         line = line.strip()
                         if line and not line.startswith('#'):
-                            rules.append(line)
+                            negate = line.startswith('!')
+                            clean_rule = line[1:] if negate else line
+
+                            rule_is_dir = clean_rule.endswith('/')
+                            if rule_is_dir:
+                                clean_rule = clean_rule[:-1]
+
+                            # Pre-compile patterns
+                            if '/' in clean_rule.strip('/'):
+                                match_pattern = clean_rule.lstrip('/')
+                                regex1 = re.compile(fnmatch.translate(match_pattern))
+                                regex2 = re.compile(fnmatch.translate(match_pattern + '/*'))
+                                rule_type = 'rel'
+                            else:
+                                rule_pattern = clean_rule.lstrip('/')
+                                regex1 = re.compile(fnmatch.translate(rule_pattern))
+                                regex2 = re.compile(fnmatch.translate(rule_pattern + '/*'))
+                                rule_type = 'name'
+
+                            rules.append((negate, rule_is_dir, rule_type, regex1, regex2))
             except Exception:
                 pass
         self.rules_cache[directory] = rules
@@ -49,25 +69,16 @@ class GitIgnoreFilter:
             rel_to_context = os.path.relpath(file_or_dir_path, path_context).replace(os.sep, '/')
             name = os.path.basename(file_or_dir_path)
 
-            for rule in rules:
-                negate = rule.startswith('!')
-                clean_rule = rule[1:] if negate else rule
-
-                rule_is_dir = clean_rule.endswith('/')
-                if rule_is_dir:
-                    clean_rule = clean_rule[:-1]
-
+            for negate, rule_is_dir, rule_type, regex1, regex2 in rules:
                 if not is_dir and rule_is_dir:
                     continue
 
                 matched = False
-                if '/' in clean_rule.strip('/'):
-                    match_pattern = clean_rule.lstrip('/')
-                    if fnmatch.fnmatch(rel_to_context, match_pattern) or fnmatch.fnmatch(rel_to_context, match_pattern + '/*'):
+                if rule_type == 'rel':
+                    if regex1.match(rel_to_context) or regex2.match(rel_to_context):
                         matched = True
                 else:
-                    rule_pattern = clean_rule.lstrip('/')
-                    if fnmatch.fnmatch(name, rule_pattern) or fnmatch.fnmatch(rel_to_context, rule_pattern + '/*'):
+                    if regex1.match(name) or regex2.match(rel_to_context):
                         matched = True
 
                 if matched:
@@ -92,16 +103,20 @@ def _get_ignore_config(config, ignore_dirs, ignore_exts):
                 for p in parts:
                     ignored_ext_set.add(p if p.startswith('.') else f'.{p}')
 
+    ignored_ext_tuple = tuple(ext.lower() if ext.startswith('.') else f'.{ext.lower()}' for ext in ignored_ext_set)
     ignored_files = set(config.get("ignored_files", []))
-    return ignore_set, ignored_ext_set, ignored_files
+    return ignore_set, ignored_ext_tuple, ignored_files
 
 
-def _is_file_included(filename, root, directory, extension, ignore_set, ignored_ext_set, ignored_files, skip_css):
+def _is_file_included(filename, root, directory, extension, ignore_set, ignored_ext_tuple, ignored_files, skip_css):
     if filename in ignored_files:
         return False
 
+    if not isinstance(ignored_ext_tuple, tuple):
+        ignored_ext_tuple = tuple(ignored_ext_tuple)
+
     lower = filename.lower()
-    if any(lower.endswith(ext) for ext in ignored_ext_set):
+    if lower.endswith(ignored_ext_tuple):
         return False
 
     if extension is None and skip_css and lower.endswith('.css'):

@@ -5,9 +5,12 @@ import string
 import re
 import subprocess
 import platform
+import time
+import threading
+import queue
+import concurrent.futures
 from src.config import load_config
-from src.filters import GitIgnoreFilter, _get_ignore_config, _is_file_included
-from src.pdf_utils import convert_to_pdf, PDF_SUPPORT
+from src.filters import GitIgnoreFilter, _get_ignore_config
 
 try:
     import docx
@@ -22,24 +25,51 @@ except ImportError:
     DOCX2PDF_SUPPORT = False
 
 
+def _get_libreoffice_path():
+    system = platform.system()
+    if system == "Windows":
+        p = r"C:\Program Files\LibreOffice\program\soffice.exe"
+        if os.path.exists(p):
+            return p
+    elif system == "Darwin":
+        p = "/Applications/LibreOffice.app/Contents/MacOS/soffice"
+        if os.path.exists(p):
+            return p
+    which_soffice = shutil.which("soffice")
+    if which_soffice:
+        return which_soffice
+    return "soffice"
+
+
+def _run_with_cancel(cmd, cancel_event, timeout=300):
+    try:
+        proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        while proc.poll() is None:
+            if cancel_event.is_set():
+                proc.terminate()
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                return False
+            time.sleep(0.1)
+        return proc.returncode == 0
+    except Exception:
+        return False
+
+
 def _extract_legacy_doc_binary(file_path):
     """Brute-force extracts printable text from a legacy .doc binary file."""
     try:
         with open(file_path, "rb") as f:
             data = f.read()
 
-        # MS Word often uses UTF-16LE, which looks like 't\x00e\x00x\x00t\x00' in binary.
-        # Stripping null bytes helps reveal the hidden text strings.
         cleaned_data = data.replace(b'\x00', b'')
-
-        # Decode to string, ignoring errors for bytes that don't map to characters
         raw_text = cleaned_data.decode('utf-8', errors='ignore')
 
-        # Filter out anything that isn't a standard printable character or whitespace
         printable = set(string.printable)
         filtered_text = ''.join(filter(lambda x: x in printable, raw_text))
 
-        # Clean up the massive gaps of whitespace caused by the stripped binary data
         filtered_text = re.sub(r'\n\s*\n', '\n\n', filtered_text)
         filtered_text = re.sub(r' {2,}', ' ', filtered_text)
 
@@ -48,182 +78,395 @@ def _extract_legacy_doc_binary(file_path):
         return f"[Failed to extract legacy .doc text: {e}]"
 
 
-def _merge_recursive(directory, extension, ignore_set, ignored_ext_set, ignored_files, skip_css,
-                     cancel_check, dry_run, log_callback, outfile, item_callback=None, git_filter=None,
-                     pdf_mode=False, pdf_temp_dir=None, pdf_list=None, styled_pdf=False, txt_temp_dir=None):
-    for root, dirs, files in os.walk(directory):
-        if cancel_check and cancel_check():
-            break
+def _extract_text(file_path, kind, log_callback=None, display_name=None):
+    if kind == 'docx' and DOCX_SUPPORT:
+        doc = docx.Document(file_path)
+        return "\n".join([para.text for para in doc.paragraphs])
+    elif kind == 'doc':
+        return _extract_legacy_doc_binary(file_path)
+    else:
+        with open(file_path, "r", encoding="utf-8", errors="replace") as infile:
+            return infile.read()
 
-        if git_filter:
-            dirs[:] = [d for d in dirs if not git_filter.is_ignored(os.path.join(root, d), is_dir=True)]
 
-        dirs[:] = [d for d in dirs if d not in ignore_set]
+def _copy_large_file(outfile, task, log_callback=None):
+    outfile.write(f"----- {task.display_name} -----\n")
+    input_buffer = 128 * 1024
+    if task.kind == 'docx' and DOCX_SUPPORT:
+        doc = docx.Document(task.path)
+        for para in doc.paragraphs:
+            outfile.write(para.text + "\n")
+    elif task.kind == 'doc':
+        outfile.write(_extract_legacy_doc_binary(task.path))
+    else:
+        with open(task.path, 'r', encoding='utf-8', errors='replace', buffering=input_buffer) as infile:
+            shutil.copyfileobj(infile, outfile)
+    outfile.write("\n")
+    if log_callback:
+        log_callback(f"Merged large file: {task.display_name}")
 
-        for file in files:
-            if cancel_check and cancel_check():
+
+def _parallel_text_merge(tasks, out_path, max_workers, cancel_event, large_file_threshold, progress_cb, log_callback):
+    result_queue = queue.PriorityQueue()
+    pending = {}
+    next_write_idx = 0
+
+    small_tasks = [t for t in tasks if t.size < large_file_threshold]
+
+    def worker(task):
+        if cancel_event.is_set():
+            return
+        try:
+            content = _extract_text(task.path, task.kind, log_callback, task.display_name)
+            result_queue.put((task.index, task.display_name, content, True))
+        except Exception as e:
+            err_msg = f"[Error reading file: {e}]"
+            if log_callback:
+                log_callback(f"Error reading {task.display_name}: {e}")
+            result_queue.put((task.index, task.display_name, err_msg, False))
+
+    output_buffer = 256 * 1024
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = [executor.submit(worker, t) for t in small_tasks]
+
+        with open(out_path, 'w', encoding='utf-8', buffering=output_buffer) as outfile:
+            while next_write_idx < len(tasks):
+                if cancel_event.is_set():
+                    for f in futures:
+                        f.cancel()
+                    break
+
+                current_task = tasks[next_write_idx]
+                if current_task.size >= large_file_threshold:
+                    if log_callback:
+                        log_callback(f"Streaming large file: {current_task.display_name}")
+                    try:
+                        _copy_large_file(outfile, current_task, log_callback)
+                    except Exception as e:
+                        outfile.write(f"----- {current_task.display_name} -----\n")
+                        outfile.write(f"[Error reading file: {e}]\n")
+                        if log_callback:
+                            log_callback(f"Error reading {current_task.display_name}: {e}")
+                    next_write_idx += 1
+                    if progress_cb:
+                        progress_cb()
+                    continue
+
+                try:
+                    idx, name, content, success = result_queue.get(timeout=0.05)
+                    pending[idx] = (name, content, success)
+                except queue.Empty:
+                    pass
+
+                while next_write_idx in pending:
+                    name, content, success = pending.pop(next_write_idx)
+                    outfile.write(f"----- {name} -----\n")
+                    outfile.write(content)
+                    outfile.write("\n")
+                    if log_callback and success:
+                        log_callback(f"Merged: {name}")
+                    next_write_idx += 1
+                    if progress_cb:
+                        progress_cb()
+
+
+def _sequential_text_merge(tasks, out_path, cancel_event, large_file_threshold, progress_cb, log_callback):
+    output_buffer = 256 * 1024
+    with open(out_path, 'w', encoding='utf-8', buffering=output_buffer) as outfile:
+        for task in tasks:
+            if cancel_event.is_set():
                 break
 
-            file_path = os.path.join(root, file)
-            if git_filter and git_filter.is_ignored(file_path, is_dir=False):
-                continue
+            if task.size >= large_file_threshold:
+                if log_callback:
+                    log_callback(f"Streaming large file: {task.display_name}")
+                try:
+                    _copy_large_file(outfile, task, log_callback)
+                except Exception as e:
+                    outfile.write(f"----- {task.display_name} -----\n")
+                    outfile.write(f"[Error reading file: {e}]\n")
+                    if log_callback:
+                        log_callback(f"Error reading {task.display_name}: {e}")
+            else:
+                try:
+                    content = _extract_text(task.path, task.kind, log_callback, task.display_name)
+                    outfile.write(f"----- {task.display_name} -----\n")
+                    outfile.write(content)
+                    outfile.write("\n")
+                    if log_callback:
+                        log_callback(f"Merged: {task.display_name}")
+                except Exception as e:
+                    outfile.write(f"----- {task.display_name} -----\n")
+                    outfile.write(f"[Error reading file: {e}]\n")
+                    if log_callback:
+                        log_callback(f"Error reading {task.display_name}: {e}")
 
-            if _is_file_included(file, root, directory, extension, ignore_set,
-                                 ignored_ext_set, ignored_files, skip_css):
-                rel_path = os.path.relpath(file_path, directory)
-                _merge_single_file(outfile, file_path, rel_path, dry_run, log_callback, pdf_mode, pdf_temp_dir, pdf_list, styled_pdf, txt_temp_dir)
+            if progress_cb:
+                progress_cb()
+
+
+def _batch_libreoffice_convert(tasks, pdf_temp_dir, cancel_event, log_callback):
+    if not tasks:
+        return {}
+
+    lo_path = _get_libreoffice_path()
+    if lo_path == "soffice" and not shutil.which("soffice"):
+        if log_callback:
+            log_callback("LibreOffice not found in PATH. Skipping batch conversion.")
+        return {}
+
+    batch_dir = tempfile.mkdtemp()
+    mapping = {}
+    copied_paths = []
+
+    try:
+        for t in tasks:
+            if cancel_event.is_set():
+                return {}
+            safe_basename = t.display_name.replace(os.sep, "_").replace("/", "_").replace("\\", "_")
+            temp_copy_path = os.path.join(batch_dir, safe_basename)
+            shutil.copy2(t.path, temp_copy_path)
+            copied_paths.append(temp_copy_path)
+
+            base_no_ext, _ = os.path.splitext(safe_basename)
+            expected_pdf_name = base_no_ext + ".pdf"
+            mapping[expected_pdf_name] = (t, temp_copy_path)
+
+        cmd = [lo_path, "--headless", "--convert-to", "pdf", "--outdir", batch_dir] + copied_paths
+
+        if log_callback:
+            log_callback(f"Running batch LibreOffice conversion for {len(tasks)} files...")
+
+        success = _run_with_cancel(cmd, cancel_event)
+        if not success:
+            if log_callback:
+                log_callback("Batch LibreOffice conversion failed or was cancelled.")
+            return {}
+
+        results = {}
+        for pdf_name, (task, _) in mapping.items():
+            pdf_path_in_batch = os.path.join(batch_dir, pdf_name)
+            if os.path.exists(pdf_path_in_batch):
+                final_pdf_name = task.display_name.replace(os.sep, "_").replace("/", "_").replace("\\", "_") + ".pdf"
+                final_pdf_path = os.path.join(pdf_temp_dir, final_pdf_name)
+
+                shutil.move(pdf_path_in_batch, final_pdf_path)
+                results[task.index] = final_pdf_path
+                if log_callback:
+                    log_callback(f"LibreOffice conversion successful: {task.display_name}")
+            else:
+                if log_callback:
+                    log_callback(f"LibreOffice failed to convert: {task.display_name}")
+
+        return results
+
+    finally:
+        shutil.rmtree(batch_dir, ignore_errors=True)
+
+
+def _single_doc_convert(task, pdf_temp_dir, cancel_event, log_callback):
+    is_docx = task.path.lower().endswith('.docx')
+    final_pdf_name = task.display_name.replace(os.sep, "_").replace("/", "_").replace("\\", "_") + ".pdf"
+    final_pdf_path = os.path.join(pdf_temp_dir, final_pdf_name)
+
+    if is_docx and DOCX2PDF_SUPPORT:
+        try:
+            if log_callback:
+                log_callback(f"Trying MS Word conversion for: {task.display_name}")
+            convert_docx(task.path, final_pdf_path)
+            if os.path.exists(final_pdf_path):
+                return final_pdf_path
+        except Exception as e:
+            if log_callback:
+                log_callback(f"MS Word conversion failed for {task.display_name}: {e}")
+
+    lo_path = _get_libreoffice_path()
+    has_lo = lo_path != "soffice" or shutil.which("soffice")
+    if has_lo:
+        batch_dir = tempfile.mkdtemp()
+        try:
+            safe_basename = task.display_name.replace(os.sep, "_").replace("/", "_").replace("\\", "_")
+            temp_copy_path = os.path.join(batch_dir, safe_basename)
+            shutil.copy2(task.path, temp_copy_path)
+
+            cmd = [lo_path, "--headless", "--convert-to", "pdf", "--outdir", batch_dir, temp_copy_path]
+            if log_callback:
+                log_callback(f"Trying LibreOffice conversion for: {task.display_name}")
+
+            if _run_with_cancel(cmd, cancel_event):
+                base_no_ext, _ = os.path.splitext(safe_basename)
+                expected_pdf_name = base_no_ext + ".pdf"
+                pdf_path_in_batch = os.path.join(batch_dir, expected_pdf_name)
+                if os.path.exists(pdf_path_in_batch):
+                    shutil.move(pdf_path_in_batch, final_pdf_path)
+                    return final_pdf_path
+        except Exception as e:
+            if log_callback:
+                log_callback(f"LibreOffice single conversion failed for {task.display_name}: {e}")
+        finally:
+            shutil.rmtree(batch_dir, ignore_errors=True)
+
+    return None
+
+
+def _process_pdf_merge(
+    tasks,
+    pdf_temp_dir,
+    pdf_list,
+    styled_pdf,
+    keep_txt_sources,
+    txt_temp_dir,
+    cancel_event,
+    log_callback,
+    item_callback,
+    max_workers,
+    perf_config
+):
+    pdf_paths_map = {}
+
+    styled_tasks = []
+    if styled_pdf:
+        styled_tasks = [t for t in tasks if t.kind in ('docx', 'doc')]
+
+    batch_enabled = perf_config.get("batch_libreoffice", True)
+    failed_styled_tasks = []
+
+    if styled_tasks:
+        if batch_enabled:
+            batch_results = _batch_libreoffice_convert(styled_tasks, pdf_temp_dir, cancel_event, log_callback)
+            for t in styled_tasks:
+                if t.index in batch_results:
+                    pdf_paths_map[t.index] = batch_results[t.index]
+                    if item_callback:
+                        item_callback()
+                else:
+                    failed_styled_tasks.append(t)
+        else:
+            failed_styled_tasks = styled_tasks
+
+        still_failed_styled = []
+        for t in failed_styled_tasks:
+            if cancel_event.is_set():
+                return
+            res_path = _single_doc_convert(t, pdf_temp_dir, cancel_event, log_callback)
+            if res_path:
+                pdf_paths_map[t.index] = res_path
                 if item_callback:
                     item_callback()
+            else:
+                still_failed_styled.append(t)
+        failed_styled_tasks = still_failed_styled
 
+    plain_tasks = []
+    if not styled_pdf:
+        plain_tasks = tasks
+    else:
+        plain_tasks = [t for t in tasks if t.kind not in ('docx', 'doc')] + failed_styled_tasks
 
-def _merge_flat(directory, extension, ignore_set, ignored_ext_set, ignored_files, skip_css,
-                cancel_check, dry_run, log_callback, outfile, item_callback=None, git_filter=None,
-                pdf_mode=False, pdf_temp_dir=None, pdf_list=None, styled_pdf=False, txt_temp_dir=None):
-    for entry in os.listdir(directory):
-        if cancel_check and cancel_check():
+    plain_tasks.sort(key=lambda t: t.index)
+
+    conversions = []
+    temp_txt_files = []
+
+    for t in plain_tasks:
+        if cancel_event.is_set():
             break
 
-        if entry in ignore_set:
-            continue
+        final_pdf_name = t.display_name.replace(os.sep, "_").replace("/", "_").replace("\\", "_") + ".pdf"
+        final_pdf_path = os.path.join(pdf_temp_dir, final_pdf_name)
 
-        full_path = os.path.join(directory, entry)
-        if not os.path.isfile(full_path):
-            continue
+        is_temp_txt = False
+        src_txt_path = t.path
 
-        if git_filter and git_filter.is_ignored(full_path, is_dir=False):
-            continue
+        if t.kind in ('docx', 'doc') or keep_txt_sources:
+            try:
+                content = _extract_text(t.path, t.kind, log_callback, t.display_name)
+            except Exception as e:
+                content = f"[Error reading file: {e}]"
+                if log_callback:
+                    log_callback(f"Error reading {t.display_name}: {e}")
 
-        if _is_file_included(entry, directory, directory, extension, ignore_set,
-                             ignored_ext_set, ignored_files, skip_css):
-            _merge_single_file(outfile, full_path, entry, dry_run, log_callback, pdf_mode, pdf_temp_dir, pdf_list, styled_pdf, txt_temp_dir)
-            if item_callback:
-                item_callback()
+            if keep_txt_sources:
+                safe_txt_name = t.display_name.replace(os.sep, "_").replace("/", "_").replace("\\", "_")
+                if not safe_txt_name.lower().endswith(".txt"):
+                    safe_txt_name = os.path.splitext(safe_txt_name)[0] + ".txt"
+                persistent_txt_path = os.path.join(txt_temp_dir, safe_txt_name)
+                try:
+                    with open(persistent_txt_path, "w", encoding="utf-8") as tf:
+                        tf.write(content)
+                    if t.kind not in ('docx', 'doc'):
+                        src_txt_path = persistent_txt_path
+                except Exception as e:
+                    if log_callback:
+                        log_callback(f"Failed to save source txt for {t.display_name}: {e}")
 
+            if t.kind in ('docx', 'doc'):
+                temp_tf = tempfile.NamedTemporaryFile(delete=False, suffix=".txt", mode="w", encoding="utf-8")
+                temp_tf.write(content)
+                temp_tf.close()
+                src_txt_path = temp_tf.name
+                is_temp_txt = True
+                temp_txt_files.append(temp_tf.name)
 
-def _merge_single_file(outfile, file_path, display_name, dry_run, log_callback, pdf_mode=False, pdf_temp_dir=None, pdf_list=None, styled_pdf=False, txt_temp_dir=None):
-    if dry_run:
+        conversions.append((t.index, src_txt_path, final_pdf_path, t.display_name, is_temp_txt))
+
+    if conversions and not cancel_event.is_set():
+        parallel_pdf_fallback = perf_config.get("parallel_pdf_fallback", True)
+
+        many_files = len(conversions) >= 20
+        large_files = sum(tasks[idx].size for idx, _, _, _, _ in conversions) > 1 * 1024 * 1024
+        use_processes = parallel_pdf_fallback and many_files and large_files
+
+        worker_args = [(c[1], c[2], c[3], False) for c in conversions]
+
         if log_callback:
-            log_callback(f"Would merge: {display_name}")
-        return
+            mode_name = "ProcessPool" if use_processes else "ThreadPool"
+            log_callback(f"Converting {len(conversions)} files to PDF in parallel using {mode_name}...")
 
-    is_docx = file_path.lower().endswith('.docx')
-    is_doc = file_path.lower().endswith('.doc')
+        executor_cls = concurrent.futures.ProcessPoolExecutor if use_processes else concurrent.futures.ThreadPoolExecutor
 
-    extracted_text = None
-    text_read_success = False
-
-    if txt_temp_dir or not pdf_mode or (pdf_mode and not styled_pdf):
         try:
-            if is_docx and DOCX_SUPPORT:
-                doc = docx.Document(file_path)
-                extracted_text = "\n".join([para.text for para in doc.paragraphs])
-            elif is_doc:
-                extracted_text = _extract_legacy_doc_binary(file_path)
-            else:
-                with open(file_path, "r", encoding="utf-8") as infile:
-                    extracted_text = infile.read()
-            text_read_success = True
-        except Exception as e:
-            extracted_text = f"[Error reading file: {e}]"
-            if log_callback:
-                log_callback(f"Error reading {display_name}: {e}")
+            from src.pdf_utils import _convert_text_to_pdf_worker
 
-    if txt_temp_dir and text_read_success:
-        safe_name = display_name.replace(os.sep, "_").replace("/", "_").replace("\\", "_")
-        if not safe_name.lower().endswith(".txt"):
-            safe_name = os.path.splitext(safe_name)[0] + ".txt"
-        txt_out_path = os.path.join(txt_temp_dir, safe_name)
-        try:
-            with open(txt_out_path, "w", encoding="utf-8") as tf:
-                tf.write(extracted_text)
+            with executor_cls(max_workers=max_workers) as executor:
+                future_to_index = {
+                    executor.submit(_convert_text_to_pdf_worker, arg): conversions[i][0]
+                    for i, arg in enumerate(worker_args)
+                }
+
+                for future in concurrent.futures.as_completed(future_to_index):
+                    if cancel_event.is_set():
+                        executor.shutdown(wait=False, cancel_futures=True)
+                        break
+                    idx = future_to_index[future]
+                    try:
+                        res_pdf_path = future.result()
+                        pdf_paths_map[idx] = res_pdf_path
+                        if item_callback:
+                            item_callback()
+                    except Exception as e:
+                        task_disp = tasks[idx].display_name
+                        if log_callback:
+                            log_callback(f"Failed to convert {task_disp} to PDF: {e}")
         except Exception as e:
             if log_callback:
-                log_callback(f"Failed to save source txt for {display_name}: {e}")
+                log_callback(f"Parallel PDF conversion error: {e}")
 
-    if pdf_mode:
+    for temp_file in temp_txt_files:
         try:
-            safe_name = display_name.replace(os.sep, "_").replace("/", "_").replace("\\", "_") + ".pdf"
-            pdf_path = os.path.join(pdf_temp_dir, safe_name)
+            os.remove(temp_file)
+        except Exception:
+            pass
 
-            target_txt_path = file_path
-            temp_txt = None
-            direct_pdf_created = False
+    for i in range(len(tasks)):
+        if i in pdf_paths_map:
+            pdf_list.append(pdf_paths_map[i])
 
-            # Tier 1: Try MS Word via docx2pdf
-            if is_docx and styled_pdf and DOCX2PDF_SUPPORT:
-                try:
-                    convert_docx(file_path, pdf_path)
-                    pdf_list.append(pdf_path)
-                    direct_pdf_created = True
-                except Exception as e:
-                    if log_callback:
-                        log_callback(f"MS Word conversion failed: {e}")
 
-            # Tier 2: Try LibreOffice Headless
-            if is_docx and styled_pdf and not direct_pdf_created:
-                try:
-                    system = platform.system()
-                    if system == "Windows":
-                        lo_path = r"C:\Program Files\LibreOffice\program\soffice.exe"
-                    elif system == "Darwin":
-                        lo_path = "/Applications/LibreOffice.app/Contents/MacOS/soffice"
-                    else:
-                        lo_path = "soffice"
-
-                    can_run_lo = True
-                    if system in ["Windows", "Darwin"] and not os.path.exists(lo_path):
-                        can_run_lo = False
-
-                    if can_run_lo:
-                        subprocess.run(
-                            [lo_path, "--headless", "--convert-to", "pdf", "--outdir", pdf_temp_dir, file_path],
-                            check=True,
-                            stdout=subprocess.DEVNULL,
-                            stderr=subprocess.DEVNULL
-                        )
-
-                        lo_out_name = os.path.splitext(os.path.basename(file_path))[0] + ".pdf"
-                        lo_out_path = os.path.join(pdf_temp_dir, lo_out_name)
-
-                        if os.path.exists(lo_out_path):
-                            if lo_out_path != pdf_path:
-                                if os.path.exists(pdf_path):
-                                    os.remove(pdf_path)
-                                os.rename(lo_out_path, pdf_path)
-                            pdf_list.append(pdf_path)
-                            direct_pdf_created = True
-                            if log_callback:
-                                log_callback(f"LibreOffice conversion successful: {display_name}")
-                except Exception as e:
-                    if log_callback:
-                        log_callback(f"LibreOffice conversion failed: {e}")
-
-            # Tier 3: Fallback to Plain Text Extraction
-            if not direct_pdf_created:
-                if is_docx or is_doc:
-                    temp_txt = tempfile.NamedTemporaryFile(delete=False, mode='w', encoding='utf-8')
-                    temp_txt.write(extracted_text if text_read_success else "")
-                    temp_txt.close()
-                    target_txt_path = temp_txt.name
-
-                convert_to_pdf(target_txt_path, pdf_path, display_name, styled_pdf)
-                pdf_list.append(pdf_path)
-
-            if temp_txt:
-                os.remove(temp_txt.name)
-
-            if log_callback and not direct_pdf_created:
-                log_callback(f"Prepared PDF via text fallback: {display_name}")
-
-        except Exception as e:
-            if log_callback:
-                log_callback(f"Error compiling {display_name}: {e}")
-    else:
-        outfile.write(f"----- {display_name} -----\n")
-        outfile.write(extracted_text if text_read_success else str(extracted_text))
-        if log_callback and text_read_success:
-            log_callback(f"Merged: {display_name}")
-        outfile.write("\n")
+def _cleanup_pdf_temp(pdf_temp_dir, pdf_list, keep_pdf_sources):
+    if not keep_pdf_sources and pdf_temp_dir and os.path.exists(pdf_temp_dir):
+        shutil.rmtree(pdf_temp_dir, ignore_errors=True)
 
 
 def merge_files(
@@ -234,7 +477,7 @@ def merge_files(
     output_file=None,
     ignore_dirs=None,
     ignore_exts=None,
-    cancel_check=None,
+    cancel_event=None,
     dry_run=False,
     log_callback=None,
     item_callback=None,
@@ -242,21 +485,59 @@ def merge_files(
     pdf_mode=False,
     keep_pdf_sources=False,
     keep_txt_sources=False,
-    styled_pdf=False
+    styled_pdf=False,
+    tasks=None
 ):
     if config is None:
         config = load_config()
+
+    if cancel_event is None:
+        cancel_event = threading.Event()
+
+    perf = config.get("performance", {})
+    max_workers = perf.get("max_workers", 0)
+    if max_workers <= 0:
+        max_workers = min(32, os.cpu_count() + 4)
+    large_file_threshold_mb = perf.get("large_file_threshold_mb", 5)
+    large_file_threshold = large_file_threshold_mb * 1024 * 1024
+    min_tasks_for_parallel = perf.get("min_tasks_for_parallel", 8)
+    pdf_batch_threshold = perf.get("pdf_batch_threshold", 200)
 
     raw_out_path = output_file or config.get("output_file", "Mono.txt")
     out_dir = config.get("output_dir", "out")
     out_path = os.path.join(out_dir, os.path.basename(raw_out_path))
 
-    ignore_set, ignored_ext_set, ignored_files = _get_ignore_config(config, ignore_dirs, ignore_exts)
+    ignore_set, ignored_ext_tuple, ignored_files = _get_ignore_config(config, ignore_dirs, ignore_exts)
     skip_css = config.get("skip_css_if_no_ext", True)
     git_filter = GitIgnoreFilter(directory) if use_gitignore else None
 
-    if extension and not extension.startswith('.'):
-        extension = f'.{extension}'
+    if tasks is None:
+        from src.collector import collect_files
+        tasks = collect_files(
+            directory=directory,
+            extension=extension,
+            recursive=recursive,
+            ignore_set=ignore_set,
+            ignored_ext_tuple=ignored_ext_tuple,
+            ignored_files=ignored_files,
+            skip_css=skip_css,
+            git_filter=git_filter
+        )
+
+    if not tasks:
+        if log_callback:
+            log_callback("No files found to process.")
+        return None
+
+    if dry_run:
+        for task in tasks:
+            if cancel_event.is_set():
+                break
+            if log_callback:
+                log_callback(f"Would merge: {task.display_name}")
+            if item_callback:
+                item_callback()
+        return None
 
     if pdf_mode:
         base, _ = os.path.splitext(out_path)
@@ -268,7 +549,7 @@ def merge_files(
 
     pdf_temp_dir = None
     pdf_list = []
-    if pdf_mode and not dry_run:
+    if pdf_mode:
         if keep_pdf_sources:
             pdf_temp_dir = os.path.join(out_dir, source_dir_name, "pdf")
         else:
@@ -277,50 +558,100 @@ def merge_files(
         os.makedirs(pdf_temp_dir, exist_ok=True)
 
     txt_temp_dir = None
-    if keep_txt_sources and not dry_run:
+    if keep_txt_sources:
         txt_temp_dir = os.path.join(out_dir, source_dir_name, "txt")
         os.makedirs(txt_temp_dir, exist_ok=True)
 
-    outfile = None
+    os.makedirs(out_dir, exist_ok=True)
+    tmp_path = out_path + ".tmp"
+
     try:
-        if not dry_run and not pdf_mode:
-            os.makedirs(out_dir, exist_ok=True)
-            outfile = open(out_path, "w", encoding="utf-8")
+        if pdf_mode:
+            _process_pdf_merge(
+                tasks=tasks,
+                pdf_temp_dir=pdf_temp_dir,
+                pdf_list=pdf_list,
+                styled_pdf=styled_pdf,
+                keep_txt_sources=keep_txt_sources,
+                txt_temp_dir=txt_temp_dir,
+                cancel_event=cancel_event,
+                log_callback=log_callback,
+                item_callback=item_callback,
+                max_workers=max_workers,
+                perf_config=perf
+            )
 
-        if recursive:
-            _merge_recursive(directory, extension, ignore_set, ignored_ext_set, ignored_files,
-                             skip_css, cancel_check, dry_run, log_callback, outfile, item_callback, git_filter,
-                             pdf_mode, pdf_temp_dir, pdf_list, styled_pdf, txt_temp_dir)
-        else:
-            _merge_flat(directory, extension, ignore_set, ignored_ext_set, ignored_files,
-                        skip_css, cancel_check, dry_run, log_callback, outfile, item_callback, git_filter,
-                        pdf_mode, pdf_temp_dir, pdf_list, styled_pdf, txt_temp_dir)
+            if cancel_event.is_set():
+                if log_callback:
+                    log_callback("Operation cancelled.")
+                _cleanup_pdf_temp(pdf_temp_dir, pdf_list, keep_pdf_sources)
+                return None
 
-        if pdf_mode and not dry_run and pdf_list:
+            if not pdf_list:
+                if log_callback:
+                    log_callback("No PDF sources generated.")
+                return None
+
             if log_callback:
                 log_callback("Compiling final PDF structure...")
-            try:
-                from pypdf import PdfWriter
-                merger = PdfWriter()
-                for p in pdf_list:
-                    merger.append(p)
-                merger.write(out_path)
-                merger.close()
 
-                if not keep_pdf_sources:
-                    shutil.rmtree(pdf_temp_dir)
-                    if log_callback:
-                        log_callback("Source files cleaned up completely.")
-                else:
-                    if log_callback:
-                        log_callback(f"Source files preserved in: {pdf_temp_dir}")
+            from src.pdf_utils import _merge_pdf_files
+            _merge_pdf_files(pdf_list, tmp_path, pdf_batch_threshold, log_callback)
 
-            except Exception as e:
+            if cancel_event.is_set():
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+                _cleanup_pdf_temp(pdf_temp_dir, pdf_list, keep_pdf_sources)
+                return None
+
+            os.replace(tmp_path, out_path)
+
+            if not keep_pdf_sources:
+                shutil.rmtree(pdf_temp_dir, ignore_errors=True)
                 if log_callback:
-                    log_callback(f"Failed to join sources: {e}")
+                    log_callback("Source files cleaned up completely.")
+            else:
+                if log_callback:
+                    log_callback(f"Source files preserved in: {pdf_temp_dir}")
+        else:
+            small_tasks = [t for t in tasks if t.size < large_file_threshold]
+            if len(small_tasks) >= min_tasks_for_parallel:
+                _parallel_text_merge(
+                    tasks=tasks,
+                    out_path=tmp_path,
+                    max_workers=max_workers,
+                    cancel_event=cancel_event,
+                    large_file_threshold=large_file_threshold,
+                    progress_cb=item_callback,
+                    log_callback=log_callback
+                )
+            else:
+                _sequential_text_merge(
+                    tasks=tasks,
+                    out_path=tmp_path,
+                    cancel_event=cancel_event,
+                    large_file_threshold=large_file_threshold,
+                    progress_cb=item_callback,
+                    log_callback=log_callback
+                )
 
-    finally:
-        if outfile:
-            outfile.close()
+            if cancel_event.is_set():
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+                if log_callback:
+                    log_callback("Operation cancelled.")
+                return None
+
+            os.replace(tmp_path, out_path)
+
+    except Exception as e:
+        if os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
+        if pdf_mode:
+            _cleanup_pdf_temp(pdf_temp_dir, pdf_list, keep_pdf_sources)
+        raise e
 
     return out_path

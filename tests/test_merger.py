@@ -118,3 +118,127 @@ def test_merge_files_execution(tmp_path, mocker):
     assert "file1.txt" in content
     assert "Hello" in content
     assert "World" in content
+
+
+def test_collect_files(tmp_path):
+    from src.collector import collect_files
+    d = tmp_path / "collect_project"
+    d.mkdir()
+    (d / "fileA.txt").write_text("A")
+    (d / "fileB.txt").write_text("B")
+    sub = d / "subdir"
+    sub.mkdir()
+    (sub / "fileC.txt").write_text("C")
+
+    tasks_flat = collect_files(str(d), extension=None, recursive=False, ignore_set=set(), ignored_ext_tuple=(), ignored_files=set(), skip_css=False)
+    assert len(tasks_flat) == 2
+    assert tasks_flat[0].display_name == "fileA.txt"
+    assert tasks_flat[1].display_name == "fileB.txt"
+
+    tasks_rec = collect_files(str(d), extension=None, recursive=True, ignore_set=set(), ignored_ext_tuple=(), ignored_files=set(), skip_css=False)
+    assert len(tasks_rec) == 3
+    assert tasks_rec[0].display_name == "fileA.txt"
+    assert tasks_rec[1].display_name == "fileB.txt"
+    assert tasks_rec[2].display_name.replace("\\", "/") == "subdir/fileC.txt"
+
+
+def test_gitignore_filter_regex_cache(tmp_path):
+    from src.filters import GitIgnoreFilter
+    d = tmp_path / "git_cache"
+    d.mkdir()
+    (d / ".gitignore").write_text("*.log\ntemp/")
+
+    f_obj = GitIgnoreFilter(str(d))
+    rules = f_obj._load_rules(str(d))
+    assert len(rules) == 2
+    negate, rule_is_dir, rule_type, r1, r2 = rules[0]
+    assert negate is False
+    assert rule_is_dir is False
+    assert rule_type == 'name'
+
+    rules_cached = f_obj._load_rules(str(d))
+    assert rules is rules_cached
+
+
+def test_parallel_merge_equivalence(tmp_path, mocker):
+    from src.merger import merge_files
+
+    src_dir = tmp_path / "equivalence"
+    src_dir.mkdir()
+    for i in range(10):
+        (src_dir / f"file{i}.txt").write_text(f"Content {i}")
+
+    out_dir = tmp_path / "out_eq"
+    out_dir.mkdir()
+
+    mock_conf_par = {
+        "output_file": "merged_par.txt",
+        "output_dir": str(out_dir),
+        "ignored_dirs": [],
+        "ignored_extensions": [],
+        "ignored_files": [],
+        "skip_css_if_no_ext": False,
+        "performance": {
+            "min_tasks_for_parallel": 5,
+            "max_workers": 2,
+            "large_file_threshold_mb": 1
+        }
+    }
+    mocker.patch("src.merger.load_config", return_value=mock_conf_par)
+
+    merge_files(str(src_dir), output_file="merged_par.txt", use_gitignore=False)
+
+    mock_conf_seq = {
+        "output_file": "merged_seq.txt",
+        "output_dir": str(out_dir),
+        "ignored_dirs": [],
+        "ignored_extensions": [],
+        "ignored_files": [],
+        "skip_css_if_no_ext": False,
+        "performance": {
+            "min_tasks_for_parallel": 50,
+            "max_workers": 2,
+            "large_file_threshold_mb": 1
+        }
+    }
+    mocker.patch("src.merger.load_config", return_value=mock_conf_seq)
+
+    merge_files(str(src_dir), output_file="merged_seq.txt", use_gitignore=False)
+
+    out_par = out_dir / "merged_par.txt"
+    out_seq = out_dir / "merged_seq.txt"
+
+    assert out_par.read_text() == out_seq.read_text()
+
+
+def test_atomic_output_and_cancellation(tmp_path, mocker):
+    import threading
+    from src.merger import merge_files
+
+    src_dir = tmp_path / "cancel_dir"
+    src_dir.mkdir()
+    (src_dir / "file1.txt").write_text("Hello")
+
+    out_dir = tmp_path / "out_cancel"
+    out_dir.mkdir()
+
+    cancel_ev = threading.Event()
+    cancel_ev.set()
+
+    mock_conf = {
+        "output_file": "merged_cancel.txt",
+        "output_dir": str(out_dir),
+        "ignored_dirs": [],
+        "ignored_extensions": [],
+        "ignored_files": [],
+        "skip_css_if_no_ext": False
+    }
+    mocker.patch("src.merger.load_config", return_value=mock_conf)
+
+    merge_files(str(src_dir), output_file="merged_cancel.txt", cancel_event=cancel_ev, use_gitignore=False)
+
+    out_file = out_dir / "merged_cancel.txt"
+    assert not out_file.exists()
+
+    tmp_files = list(out_dir.glob("*.tmp"))
+    assert len(tmp_files) == 0
