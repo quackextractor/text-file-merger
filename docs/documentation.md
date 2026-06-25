@@ -1,6 +1,6 @@
 # Text File Merger - Performance & Architecture Documentation
 
-This document outlines the architecture, pipeline stages, and performance optimizations implemented in version 1.6.0 of the Text File Merger utility.
+This document outlines the architecture, pipeline stages, and performance optimizations implemented in version 1.6.1 of the Text File Merger utility.
 
 ## 1. Architectural Overview
 

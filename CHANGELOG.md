@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.1] - 2026-06-25
+### Added
+* **Preview Ingestion Stats**: Enabled token estimation inside dry-run preview mode.
+* **Compact Summary Panel**: Created a side-by-side split layout panel in the GUI to show files, size, tokens, and output path dynamically, replacing pop-up modal dialogs.
+### Fixed
+* **URL Source Directory Bypass**: Fixed an issue where remote repository URLs inputted in the GUI triggered local directory checks and caused validation errors.
+* **Token Rounding Format**: Formatted estimated token counts in thousands (e.g., `29.3k` instead of raw integers).
+
 ## [1.6.0] - 2026-06-25
 ### Added
 * **Token Counting**: Integrated `tiktoken` for accurate token estimation with fallback to character count estimation (`len // 4`). Shows number of files, total size, and token counts upon merge completion.
