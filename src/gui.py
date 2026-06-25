@@ -264,88 +264,25 @@ class MergeApp:
         self.log_text = ctk.CTkTextbox(log_summary_frame, state=tk.DISABLED, height=150)
         self.log_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 10))
 
-        # Right: Summary frame with rounded corners and border
-        self.summary_frame = ctk.CTkFrame(
-            log_summary_frame,
-            width=260,
-            corner_radius=12,
-            border_width=2,
-            border_color=["#d1d5db", "#374151"]
-        )
+        # Right: Summary frame
+        self.summary_frame = ctk.CTkFrame(log_summary_frame, width=240)
         self.summary_frame.pack(side=tk.RIGHT, fill=tk.BOTH)
         self.summary_frame.pack_propagate(False)
 
-        # Header Badge
-        header_frame = ctk.CTkFrame(self.summary_frame, fg_color=["#e0f2fe", "#1e3a8a"], corner_radius=8, height=35)
-        header_frame.pack(fill=tk.X, padx=12, pady=12)
-        header_frame.pack_propagate(False)
+        summary_title = ctk.CTkLabel(self.summary_frame, text="Merge / Preview Summary", font=("Helvetica", 12, "bold"))
+        summary_title.pack(anchor=tk.W, padx=10, pady=(10, 5))
 
-        summary_title = ctk.CTkLabel(
-            header_frame,
-            text="EXECUTION SUMMARY",
-            font=("Inter", 11, "bold"),
-            text_color=["#0369a1", "#38bdf8"]
-        )
-        summary_title.pack(expand=True)
+        self.summary_files_lbl = ctk.CTkLabel(self.summary_frame, text="Files Processed: -", font=("Helvetica", 11), anchor=tk.W)
+        self.summary_files_lbl.pack(fill=tk.X, padx=10, pady=2)
 
-        # Container for stats
-        stats_container = ctk.CTkFrame(self.summary_frame, fg_color="transparent")
-        stats_container.pack(fill=tk.BOTH, expand=True, padx=15, pady=(0, 12))
+        self.summary_size_lbl = ctk.CTkLabel(self.summary_frame, text="Total Size: -", font=("Helvetica", 11), anchor=tk.W)
+        self.summary_size_lbl.pack(fill=tk.X, padx=10, pady=2)
 
-        # Helper to create stats rows
-        def create_stat_row(parent, label_text):
-            row = ctk.CTkFrame(parent, fg_color="transparent")
-            row.pack(fill=tk.X, pady=6)
+        self.summary_tokens_lbl = ctk.CTkLabel(self.summary_frame, text="Estimated Tokens: -", font=("Helvetica", 11), anchor=tk.W)
+        self.summary_tokens_lbl.pack(fill=tk.X, padx=10, pady=2)
 
-            lbl = ctk.CTkLabel(
-                row,
-                text=label_text,
-                font=("Inter", 11, "bold"),
-                text_color=["#4b5563", "#9ca3af"],
-                anchor=tk.W
-            )
-            lbl.pack(side=tk.LEFT)
-
-            val = ctk.CTkLabel(
-                row,
-                text="-",
-                font=("Inter", 12, "bold"),
-                text_color=["#1f2937", "#f3f4f6"],
-                anchor=tk.E
-            )
-            val.pack(side=tk.RIGHT, fill=tk.X, expand=True)
-
-            separator = ctk.CTkFrame(parent, height=1, fg_color=["#e5e7eb", "#1f2937"])
-            separator.pack(fill=tk.X, pady=4)
-
-            return val
-
-        self.summary_files_val = create_stat_row(stats_container, "Files Processed")
-        self.summary_size_val = create_stat_row(stats_container, "Total Output Size")
-        self.summary_tokens_val = create_stat_row(stats_container, "Estimated Tokens")
-
-        # Output Path Row
-        path_row = ctk.CTkFrame(stats_container, fg_color="transparent")
-        path_row.pack(fill=tk.X, pady=6)
-
-        path_lbl = ctk.CTkLabel(
-            path_row,
-            text="Destination Output",
-            font=("Inter", 10, "bold"),
-            text_color=["#4b5563", "#9ca3af"],
-            anchor=tk.W
-        )
-        path_lbl.pack(fill=tk.X)
-
-        self.summary_path_val = ctk.CTkLabel(
-            path_row,
-            text="-",
-            font=("Consolas", 10),
-            text_color=["#0369a1", "#38bdf8"],
-            anchor=tk.W,
-            wraplength=220
-        )
-        self.summary_path_val.pack(fill=tk.X, pady=(2, 0))
+        self.summary_path_lbl = ctk.CTkLabel(self.summary_frame, text="Output: -", font=("Helvetica", 11), anchor=tk.W, wraplength=220)
+        self.summary_path_lbl.pack(fill=tk.X, padx=10, pady=2)
 
         self.tree_label = ctk.CTkLabel(content, text="Directory Structure:")
         self.tree_label.pack(anchor=tk.W, pady=(5, 2))
@@ -515,10 +452,10 @@ class MergeApp:
         self.tree_text.configure(state=tk.DISABLED)
 
         # Clear summary labels
-        self.summary_files_val.configure(text="-")
-        self.summary_size_val.configure(text="-")
-        self.summary_tokens_val.configure(text="-")
-        self.summary_path_val.configure(text="-")
+        self.summary_files_lbl.configure(text="Files Processed: -")
+        self.summary_size_lbl.configure(text="Total Size: -")
+        self.summary_tokens_lbl.configure(text="Estimated Tokens: -")
+        self.summary_path_lbl.configure(text="Output: -")
 
         mode_text = "Previewing" if dry_run else "Merging"
         self.log_message(f"Starting {mode_text}...")
@@ -640,13 +577,13 @@ class MergeApp:
                         formatted_tokens = str(token_val)
 
                     # Update summary labels
-                    self.summary_files_val.configure(text=str(res["file_count"]))
-                    self.summary_size_val.configure(text=f"{res['total_size_bytes'] / 1024:.1f} KB")
-                    self.summary_tokens_val.configure(text=formatted_tokens)
+                    self.summary_files_lbl.configure(text=f"Files Processed: {res['file_count']}")
+                    self.summary_size_lbl.configure(text=f"Total Size: {res['total_size_bytes'] / 1024:.1f} KB")
+                    self.summary_tokens_lbl.configure(text=f"Estimated Tokens: {formatted_tokens}")
                     if not dry_run:
-                        self.summary_path_val.configure(text=os.path.basename(final_out_path))
+                        self.summary_path_lbl.configure(text=f"Output: {os.path.basename(final_out_path)}")
                     else:
-                        self.summary_path_val.configure(text="Preview (Dry Run)")
+                        self.summary_path_lbl.configure(text="Output: Preview")
 
                     # Update log with summary
                     mode_name = "Preview" if dry_run else "Merge"
