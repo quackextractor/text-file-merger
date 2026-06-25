@@ -256,8 +256,33 @@ class MergeApp:
         self.progress.pack(fill=tk.X, pady=(10, 15))
         self.progress.set(0)
 
-        self.log_text = ctk.CTkTextbox(content, state=tk.DISABLED, height=150)
-        self.log_text.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        # Log & Summary side-by-side frame
+        log_summary_frame = ctk.CTkFrame(content, fg_color="transparent")
+        log_summary_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+
+        # Left: Log textbox
+        self.log_text = ctk.CTkTextbox(log_summary_frame, state=tk.DISABLED, height=150)
+        self.log_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 10))
+
+        # Right: Summary frame
+        self.summary_frame = ctk.CTkFrame(log_summary_frame, width=240)
+        self.summary_frame.pack(side=tk.RIGHT, fill=tk.BOTH)
+        self.summary_frame.pack_propagate(False)
+
+        summary_title = ctk.CTkLabel(self.summary_frame, text="Merge / Preview Summary", font=("Helvetica", 12, "bold"))
+        summary_title.pack(anchor=tk.W, padx=10, pady=(10, 5))
+
+        self.summary_files_lbl = ctk.CTkLabel(self.summary_frame, text="Files Processed: -", font=("Helvetica", 11), anchor=tk.W)
+        self.summary_files_lbl.pack(fill=tk.X, padx=10, pady=2)
+
+        self.summary_size_lbl = ctk.CTkLabel(self.summary_frame, text="Total Size: -", font=("Helvetica", 11), anchor=tk.W)
+        self.summary_size_lbl.pack(fill=tk.X, padx=10, pady=2)
+
+        self.summary_tokens_lbl = ctk.CTkLabel(self.summary_frame, text="Estimated Tokens: -", font=("Helvetica", 11), anchor=tk.W)
+        self.summary_tokens_lbl.pack(fill=tk.X, padx=10, pady=2)
+
+        self.summary_path_lbl = ctk.CTkLabel(self.summary_frame, text="Output: -", font=("Helvetica", 11), anchor=tk.W, wraplength=220)
+        self.summary_path_lbl.pack(fill=tk.X, padx=10, pady=2)
 
         self.tree_label = ctk.CTkLabel(content, text="Directory Structure:")
         self.tree_label.pack(anchor=tk.W, pady=(5, 2))
@@ -426,6 +451,12 @@ class MergeApp:
         self.tree_text.delete("1.0", tk.END)
         self.tree_text.configure(state=tk.DISABLED)
 
+        # Clear summary labels
+        self.summary_files_lbl.configure(text="Files Processed: -")
+        self.summary_size_lbl.configure(text="Total Size: -")
+        self.summary_tokens_lbl.configure(text="Estimated Tokens: -")
+        self.summary_path_lbl.configure(text="Output: -")
+
         mode_text = "Previewing" if dry_run else "Merging"
         self.log_message(f"Starting {mode_text}...")
 
@@ -545,6 +576,15 @@ class MergeApp:
                     else:
                         formatted_tokens = str(token_val)
 
+                    # Update summary labels
+                    self.summary_files_lbl.configure(text=f"Files Processed: {res['file_count']}")
+                    self.summary_size_lbl.configure(text=f"Total Size: {res['total_size_bytes'] / 1024:.1f} KB")
+                    self.summary_tokens_lbl.configure(text=f"Estimated Tokens: {formatted_tokens}")
+                    if not dry_run:
+                        self.summary_path_lbl.configure(text=f"Output: {os.path.basename(final_out_path)}")
+                    else:
+                        self.summary_path_lbl.configure(text="Output: Preview")
+
                     # Update log with summary
                     mode_name = "Preview" if dry_run else "Merge"
                     self.log_message(f"\n--- {mode_name} Summary ---")
@@ -555,51 +595,11 @@ class MergeApp:
                         self.log_message(f"Output path: {final_out_path}\n")
                     else:
                         self.log_message("Preview finished.\n")
-
-                    # Open summary pop-up window on main thread
-                    self.root.after(0, lambda: self.show_summary_window(res, dry_run))
                 else:
                     self.log_message("Operation completed with no output.")
 
         except Exception as e:
             self.log_message(f"Error: {e}")
-
-    def show_summary_window(self, res, dry_run=False):
-        summary_win = ctk.CTkToplevel(self.root)
-        summary_win.title("Preview Summary" if dry_run else "Merge Summary")
-        summary_win.geometry("450x300")
-        summary_win.transient(self.root)
-        summary_win.grab_set()
-
-        frame = ctk.CTkFrame(summary_win, fg_color="transparent")
-        frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
-
-        title = "Preview Completed Successfully" if dry_run else "Merge Completed Successfully"
-        ctk.CTkLabel(frame, text=title, font=("Helvetica", 16, "bold")).pack(pady=(0, 20))
-
-        stats_frame = ctk.CTkFrame(frame, fg_color="transparent")
-        stats_frame.pack(fill=tk.X, pady=(0, 20))
-
-        def add_stat(label, val):
-            row = ctk.CTkFrame(stats_frame, fg_color="transparent")
-            row.pack(fill=tk.X, pady=4)
-            ctk.CTkLabel(row, text=label, font=("Helvetica", 12, "bold"), width=150, anchor=tk.W).pack(side=tk.LEFT)
-            ctk.CTkLabel(row, text=val, font=("Helvetica", 12), anchor=tk.W).pack(side=tk.LEFT, fill=tk.X, expand=True)
-
-        token_val = res["token_count"]
-        if token_val >= 1000:
-            formatted_tokens = f"{token_val / 1000:.1f}k"
-        else:
-            formatted_tokens = str(token_val)
-
-        add_stat("Files Processed:", str(res["file_count"]))
-        add_stat("Total Size:", f"{res['total_size_bytes'] / 1024:.1f} KB")
-        add_stat("Estimated Tokens:", formatted_tokens)
-
-        if not dry_run:
-            add_stat("Output Path:", res["output_path"])
-
-        ctk.CTkButton(frame, text="Close", width=100, command=summary_win.destroy).pack(side=tk.BOTTOM, pady=(10, 0))
 
     def open_settings(self):
         settings_win = ctk.CTkToplevel(self.root)
