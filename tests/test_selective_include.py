@@ -82,7 +82,8 @@ def test_merge_files_with_include_list(tmp_path, mocker):
         directory=str(src_dir),
         output_file="merged.txt",
         use_gitignore=False,
-        include_list=["file1.txt", "file3.txt"]
+        include_list=["file1.txt", "file3.txt"],
+        tree_ignore_level="all"
     )
 
     assert res is not None

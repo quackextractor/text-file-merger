@@ -237,3 +237,66 @@ def test_atomic_output_and_cancellation(tmp_path, mocker):
 
     tmp_files = list(out_dir.glob("*.tmp"))
     assert len(tmp_files) == 0
+
+
+def test_tree_ignore_levels(tmp_path, mocker):
+    src_dir = tmp_path / "src"
+    src_dir.mkdir()
+    (src_dir / "file1.txt").write_text("One")
+    (src_dir / "file2.py").write_text("Two")
+
+    ignored_dir = src_dir / "ignored_dir"
+    ignored_dir.mkdir()
+    (ignored_dir / "file3.txt").write_text("Three")
+
+    (src_dir / "ignored_file.txt").write_text("Four")
+
+    out_dir = tmp_path / "out"
+
+    mock_conf = {
+        "output_file": "merged.txt",
+        "output_dir": str(out_dir),
+        "ignored_dirs": ["ignored_dir"],
+        "ignored_extensions": [".py"],
+        "ignored_files": ["ignored_file.txt"],
+        "include_tree": True,
+        "tree_ignore_level": "none"
+    }
+    mocker.patch("src.merger.load_config", return_value=mock_conf)
+
+    # 1. none
+    res = merge_files(str(src_dir), output_file="merged_none.txt", use_gitignore=False, tree_ignore_level="none", recursive=True)
+    assert res is not None
+    tree_str = res["tree"]
+    assert "file1.txt" in tree_str
+    assert "file2.py" in tree_str
+    assert "ignored_dir" in tree_str
+    assert "file3.txt" in tree_str
+    assert "ignored_file.txt" in tree_str
+
+    # 2. settings
+    res = merge_files(str(src_dir), output_file="merged_settings.txt", use_gitignore=False, tree_ignore_level="settings", recursive=True)
+    assert res is not None
+    tree_str = res["tree"]
+    assert "file1.txt" in tree_str
+    assert "file2.py" not in tree_str
+    assert "ignored_dir" not in tree_str
+    assert "ignored_file.txt" not in tree_str
+
+    # 3. extension
+    res = merge_files(str(src_dir), extension="txt", output_file="merged_ext.txt", use_gitignore=False, tree_ignore_level="extension", recursive=True)
+    assert res is not None
+    tree_str = res["tree"]
+    assert "file1.txt" in tree_str
+    assert "file2.py" not in tree_str
+    assert "ignored_dir" not in tree_str
+    assert "ignored_file.txt" not in tree_str
+
+    # 4. all
+    res = merge_files(str(src_dir), output_file="merged_all.txt", use_gitignore=False, tree_ignore_level="all", include_list=["file1.txt"], recursive=True)
+    assert res is not None
+    tree_str = res["tree"]
+    assert "file1.txt" in tree_str
+    assert "file2.py" not in tree_str
+    assert "ignored_dir" not in tree_str
+    assert "ignored_file.txt" not in tree_str

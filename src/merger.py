@@ -502,7 +502,8 @@ def merge_files(
     git_token=None,
     include_tree=None,
     tasks_collected_callback=None,
-    include_list=None
+    include_list=None,
+    tree_ignore_level=None
 ):
     if config is None:
         config = load_config()
@@ -577,10 +578,43 @@ def merge_files(
         if include_tree is None:
             include_tree = config.get("include_tree", True)
 
+        if tree_ignore_level is None:
+            tree_ignore_level = config.get("tree_ignore_level", "none")
+
         tree_str = None
         if include_tree:
             from src.tree_utils import generate_tree
-            tree_str = generate_tree(tasks, directory)
+            if tree_ignore_level == "all":
+                tree_tasks = tasks
+            else:
+                from src.collector import collect_files
+                if tree_ignore_level == "extension":
+                    t_ignore_set = ignore_set
+                    t_ignored_ext_tuple = ignored_ext_tuple
+                    t_ignored_files = ignored_files
+                    t_extension = extension
+                elif tree_ignore_level == "settings":
+                    t_ignore_set = ignore_set
+                    t_ignored_ext_tuple = ignored_ext_tuple
+                    t_ignored_files = ignored_files
+                    t_extension = None
+                else:  # "none" or default
+                    t_ignore_set = set()
+                    t_ignored_ext_tuple = ()
+                    t_ignored_files = set()
+                    t_extension = None
+
+                tree_tasks = collect_files(
+                    directory=directory,
+                    extension=t_extension,
+                    recursive=recursive,
+                    ignore_set=t_ignore_set,
+                    ignored_ext_tuple=t_ignored_ext_tuple,
+                    ignored_files=t_ignored_files,
+                    git_filter=git_filter,
+                    include_list=None
+                )
+            tree_str = generate_tree(tree_tasks, directory)
 
         if dry_run:
             token_count = 0

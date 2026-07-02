@@ -28,6 +28,8 @@ if __name__ == '__main__':
     parser.add_argument("--git-token", default=None, help="GitHub Personal Access Token for private repositories")
     parser.add_argument("--no-tree", action="store_true", help="Disable prepend of directory tree structure to output")
     parser.add_argument("--include", default=None, help="Comma-separated list of relative files to selectively include")
+    parser.add_argument("--tree-ignore-level", choices=["none", "settings", "extension", "all"], default=None,
+                        help="Ignore level for the directory tree structure: none, settings, extension, all (default: none)")
 
     args, unknown = parser.parse_known_args()
 
@@ -79,7 +81,8 @@ if __name__ == '__main__':
             git_commit=args.commit,
             git_token=args.git_token,
             include_tree=not args.no_tree,
-            include_list=include_list
+            include_list=include_list,
+            tree_ignore_level=args.tree_ignore_level
         )
         if res:
             token_val = res['token_count']

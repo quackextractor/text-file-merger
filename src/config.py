@@ -36,6 +36,7 @@ def get_bundled_config():
         ],
         "use_gitignore": True,
         "include_tree": True,
+        "tree_ignore_level": "none",
         "performance": {
             "max_workers": 0,
             "large_file_threshold_mb": 5,

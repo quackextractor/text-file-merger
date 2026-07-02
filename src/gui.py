@@ -218,9 +218,28 @@ class MergeApp:
         self.git_token_entry.pack(side=tk.LEFT)
 
         self.include_tree_var = tk.BooleanVar(value=self.config.get("include_tree", True))
+        self.include_tree_var.trace_add("write", self.on_tree_toggle)
         tree_chk = ctk.CTkCheckBox(content, text="Include directory tree", variable=self.include_tree_var)
         tree_chk.pack(anchor=tk.W, pady=(0, 5))
         Tooltip(tree_chk, "Prepend a visual folder hierarchy tree to the output")
+
+        self.tree_ignore_level_frame = ctk.CTkFrame(content, fg_color="transparent")
+        self.tree_ignore_level_frame.pack(anchor=tk.W, padx=20, pady=(0, 5))
+
+        tree_ignore_level_lbl = ctk.CTkLabel(self.tree_ignore_level_frame, text="Tree Ignore Level:")
+        tree_ignore_level_lbl.pack(side=tk.LEFT, padx=(0, 5))
+
+        self.tree_ignore_level_var = tk.StringVar(value=self.config.get("tree_ignore_level", "none"))
+        self.tree_ignore_level_combo = ctk.CTkComboBox(
+            self.tree_ignore_level_frame,
+            variable=self.tree_ignore_level_var,
+            values=["none", "settings", "extension", "all"],
+            width=120
+        )
+        self.tree_ignore_level_combo.pack(side=tk.LEFT)
+        Tooltip(self.tree_ignore_level_combo, "Filter level for tree: none (only gitignore), settings (apply custom ignores), extension (apply settings+extension), all (apply all filters)")
+        if not self.include_tree_var.get():
+            self.tree_ignore_level_combo.configure(state=tk.DISABLED)
 
         self.keep_txt_sources_var = tk.BooleanVar(value=False)
         self.keep_txt_chk = ctk.CTkCheckBox(content, text="Keep source text files", variable=self.keep_txt_sources_var)
@@ -335,6 +354,13 @@ class MergeApp:
                 if hasattr(self, 'styled_chk'):
                     self.styled_chk.configure(state=tk.DISABLED)
                     self.styled_pdf_var.set(False)
+
+    def on_tree_toggle(self, *args):
+        if hasattr(self, 'tree_ignore_level_combo'):
+            if self.include_tree_var.get():
+                self.tree_ignore_level_combo.configure(state=tk.NORMAL)
+            else:
+                self.tree_ignore_level_combo.configure(state=tk.DISABLED)
 
     def on_include_toggle(self, *args):
         if self.include_mode_var.get():
@@ -483,6 +509,7 @@ class MergeApp:
             keep_txt_sources = self.keep_txt_sources_var.get() if hasattr(self, 'keep_txt_sources_var') else False
             styled_pdf = self.styled_pdf_var.get() if hasattr(self, 'styled_pdf_var') else False
             include_tree = self.include_tree_var.get() if hasattr(self, 'include_tree_var') else True
+            tree_ignore_level = self.tree_ignore_level_var.get() if hasattr(self, 'tree_ignore_level_var') else "none"
 
             is_git = self.is_git_var.get() or (directory and (directory.startswith("http://") or directory.startswith("https://")))
             git_branch = self.git_ref_var.get().strip() or None if is_git else None
@@ -564,6 +591,7 @@ class MergeApp:
                 git_branch=git_branch,
                 git_token=git_token,
                 include_tree=include_tree,
+                tree_ignore_level=tree_ignore_level,
                 tasks_collected_callback=tasks_collected_callback,
                 include_list=include_list
             )

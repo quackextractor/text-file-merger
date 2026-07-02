@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-07-02
+### Added
+* **Selective Tree Ignore Levels**: Introduced configurable ignore levels for the directory tree structure (`none`, `settings`, `extension`, `all`). This enables the directory tree to show all files (default, only applying `.gitignore`) or filter it by custom ignores, extension filter, or selective mode. Available via GUI and `--tree-ignore-level` CLI argument.
+
 ## [1.7.0] - 2026-07-02
 ### Added
 * **Selective Include Mode**: Added selective include filter (`--include` in CLI, "Selective Mode" checkbox/input in GUI) to allow merging only specified files by their relative paths.
