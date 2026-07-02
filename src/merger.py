@@ -501,7 +501,8 @@ def merge_files(
     git_commit=None,
     git_token=None,
     include_tree=None,
-    tasks_collected_callback=None
+    tasks_collected_callback=None,
+    include_list=None
 ):
     if config is None:
         config = load_config()
@@ -563,7 +564,8 @@ def merge_files(
                 ignored_ext_tuple=ignored_ext_tuple,
                 ignored_files=ignored_files,
                 skip_css=skip_css,
-                git_filter=git_filter
+                git_filter=git_filter,
+                include_list=include_list
             )
             if tasks_collected_callback:
                 tasks_collected_callback(tasks)

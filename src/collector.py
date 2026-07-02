@@ -20,7 +20,8 @@ def collect_files(
     ignored_ext_tuple: tuple,
     ignored_files: Set[str],
     skip_css: bool,
-    git_filter=None
+    git_filter=None,
+    include_list: Optional[List[str]] = None
 ) -> List[FileTask]:
     directory = os.path.abspath(directory)
     tasks = []
@@ -42,6 +43,13 @@ def collect_files(
 
             for file in files:
                 file_path = os.path.join(root, file)
+                display_name = os.path.relpath(file_path, directory).replace(os.sep, '/')
+
+                # 1. Apply Selective Include Filter
+                if include_list is not None and display_name not in include_list:
+                    continue
+
+                # 2. Apply Ignore Rules
                 if git_filter and git_filter.is_ignored(file_path, is_dir=False):
                     continue
 
@@ -57,8 +65,6 @@ def collect_files(
 
                 if extension is not None and not lower_name.endswith(extension):
                     continue
-
-                display_name = os.path.relpath(file_path, directory)
 
                 # Classify the file type
                 if lower_name.endswith('.docx'):
@@ -78,7 +84,7 @@ def collect_files(
                 tasks.append(FileTask(
                     index=index,
                     path=file_path,
-                    display_name=display_name.replace(os.sep, '/'),
+                    display_name=display_name,
                     size=size,
                     kind=kind
                 ))
@@ -97,6 +103,13 @@ def collect_files(
             if not os.path.isfile(full_path):
                 continue
 
+            display_name = entry.replace(os.sep, '/')
+
+            # 1. Apply Selective Include Filter
+            if include_list is not None and display_name not in include_list:
+                continue
+
+            # 2. Apply Ignore Rules
             if entry in ignore_set:
                 continue
 
@@ -134,7 +147,7 @@ def collect_files(
             tasks.append(FileTask(
                 index=index,
                 path=full_path,
-                display_name=entry,
+                display_name=display_name,
                 size=size,
                 kind=kind
             ))

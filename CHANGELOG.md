@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-07-02
+### Added
+* **Selective Include Mode**: Added selective include filter (`--include` in CLI, "Selective Mode" checkbox/input in GUI) to allow merging only specified files by their relative paths.
+* **Scrollable GUI Container**: Upgraded the main GUI container to a `CTkScrollableFrame` to permanently prevent window overflow.
+
 ## [1.6.1] - 2026-06-25
 ### Added
 * **Preview Ingestion Stats**: Enabled token estimation inside dry-run preview mode.

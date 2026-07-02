@@ -27,6 +27,7 @@ if __name__ == '__main__':
     parser.add_argument("--commit", default=None, help="Git commit hash to checkout")
     parser.add_argument("--git-token", default=None, help="GitHub Personal Access Token for private repositories")
     parser.add_argument("--no-tree", action="store_true", help="Disable prepend of directory tree structure to output")
+    parser.add_argument("--include", default=None, help="Comma-separated list of relative files to selectively include")
 
     args, unknown = parser.parse_known_args()
 
@@ -57,6 +58,10 @@ if __name__ == '__main__':
         app = MergeApp(root)
         root.mainloop()
     else:
+        include_list = None
+        if args.include:
+            include_list = [p.strip().replace('\\', '/') for p in args.include.split(',') if p.strip()]
+
         res = merge_files(
             args.directory,
             config=None,
@@ -73,7 +78,8 @@ if __name__ == '__main__':
             git_tag=args.tag,
             git_commit=args.commit,
             git_token=args.git_token,
-            include_tree=not args.no_tree
+            include_tree=not args.no_tree,
+            include_list=include_list
         )
         if res:
             token_val = res['token_count']

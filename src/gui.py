@@ -124,7 +124,8 @@ class MergeApp:
         self.main_frame = ctk.CTkFrame(self.root)
         self.main_frame.pack(fill=tk.BOTH, expand=True, padx=0, pady=0)
 
-        content = ctk.CTkFrame(self.main_frame, fg_color="transparent")
+        # Upgrade to ScrollableFrame to prevent overflow permanently
+        content = ctk.CTkScrollableFrame(self.main_frame, fg_color="transparent")
         content.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
 
         self.src_lbl = ctk.CTkLabel(content, text="Source Directory (Drag and Drop or Paste):")
@@ -154,6 +155,17 @@ class MergeApp:
         self.ext_var = tk.StringVar()
         self.ext_entry = ctk.CTkEntry(content, textvariable=self.ext_var)
         self.ext_entry.pack(fill=tk.X, pady=(0, 10))
+
+        # --- NEW: Selective Include Mode ---
+        self.include_mode_var = tk.BooleanVar(value=False)
+        self.include_mode_var.trace_add("write", self.on_include_toggle)
+        self.include_chk = ctk.CTkCheckBox(content, text="Selective Mode (Include Only)", variable=self.include_mode_var)
+        self.include_chk.pack(anchor=tk.W, pady=(0, 5))
+        Tooltip(self.include_chk, "Only merge files that match a comma-separated list of relative paths")
+
+        self.include_list_var = tk.StringVar()
+        self.include_entry = ctk.CTkEntry(content, textvariable=self.include_list_var, placeholder_text="e.g., src/index.html, README.md", state=tk.DISABLED)
+        self.include_entry.pack(fill=tk.X, pady=(0, 10))
 
         out_dir_lbl = ctk.CTkLabel(content, text="Output Directory:")
         out_dir_lbl.pack(anchor=tk.W, pady=(5, 2))
@@ -329,6 +341,12 @@ class MergeApp:
                     self.styled_chk.configure(state=tk.DISABLED)
                     self.styled_pdf_var.set(False)
 
+    def on_include_toggle(self, *args):
+        if self.include_mode_var.get():
+            self.include_entry.configure(state=tk.NORMAL)
+        else:
+            self.include_entry.configure(state=tk.DISABLED)
+
     def open_folder(self, path):
         if not path or not os.path.exists(path):
             self.log_message(f"Cannot open folder: Path does not exist ({path})")
@@ -475,6 +493,12 @@ class MergeApp:
             git_branch = self.git_ref_var.get().strip() or None if is_git else None
             git_token = self.git_token_var.get().strip() or None if is_git else None
 
+            # Process the Selective Include List
+            include_list = None
+            if hasattr(self, 'include_mode_var') and self.include_mode_var.get():
+                raw_includes = self.include_list_var.get()
+                include_list = [p.strip().replace('\\', '/') for p in raw_includes.split(',') if p.strip()]
+
             tasks = None
             total_files = 0
 
@@ -493,7 +517,8 @@ class MergeApp:
                     ignored_ext_tuple=ignored_ext_tuple,
                     ignored_files=ignored_files,
                     skip_css=skip_css,
-                    git_filter=git_filter
+                    git_filter=git_filter,
+                    include_list=include_list
                 )
                 total_files = len(tasks)
                 if total_files == 0:
@@ -546,7 +571,8 @@ class MergeApp:
                 git_branch=git_branch,
                 git_token=git_token,
                 include_tree=include_tree,
-                tasks_collected_callback=tasks_collected_callback
+                tasks_collected_callback=tasks_collected_callback,
+                include_list=include_list
             )
 
             throttler.force_flush()

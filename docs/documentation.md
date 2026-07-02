@@ -1,13 +1,13 @@
 # Text File Merger - Performance & Architecture Documentation
 
-This document outlines the architecture, pipeline stages, and performance optimizations implemented in version 1.6.1 of the Text File Merger utility.
+This document outlines the architecture, pipeline stages, and performance optimizations implemented in version 1.7.0 of the Text File Merger utility.
 
 ## 1. Architectural Overview
 
 The application is structured into a clean modular package under the `src/` directory, with `main.py` serving as the primary entry point:
 
-- **Entry Point (`main.py`)**: Handles command line argument parsing and starts the Tkinter GUI (`MergeApp`) or executes the CLI-based merge directly.
-- **Collector (`src/collector.py`)**: Runs Phase 1 (pre-scan) of the merging process, walking the file tree, applying ignore rules, and building a deterministic ordered list of file tasks.
+- **Entry Point (`main.py`)**: Handles command line argument parsing (including selective include option) and starts the Tkinter GUI (`MergeApp`) or executes the CLI-based merge directly.
+- **Collector (`src/collector.py`)**: Runs Phase 1 (pre-scan) of the merging process, walking the file tree, applying selective include list, applying ignore rules, and building a deterministic ordered list of file tasks.
 - **Config (`src/config.py`)**: Manages default configuration settings and handles configuration loading and deep merging of performance configurations.
 - **Filters (`src/filters.py`)**: Contains ignore filters, including cache-backed pattern compilation for `.gitignore` rules.
 - **Merger (`src/merger.py`)**: Orchestrates the merge pipeline, coordinating sequential streaming, parallel worker execution, atomic filesystem updates, and cancellation events. Includes Git repository ingestion and tree integration.
@@ -24,9 +24,10 @@ The application is structured into a clean modular package under the `src/` dire
 ### 2.1 Phase 1: Pre-Scan (Collector)
 To support deterministic file order, accurate progress reports, and safe parallelization, the application implements a two-phase pipeline:
 1. The `collect_files` function traverses the directories recursively or flatly.
-2. Directories and files are sorted alphabetically at each level to guarantee consistent, cross-platform ordering.
-3. Path exclusion filters (like `.gitignore` rules and config ignores) are matched against cached pre-compiled regex translations of glob patterns, achieving constant-time lookup.
-4. Filtered files are compiled into a deterministic list of `FileTask` objects, each carrying its file size and classification (`text`, `docx`, `doc`, or `other_text`).
+2. If a selective include list is provided, files not matching the list are skipped immediately.
+3. Directories and files are sorted alphabetically at each level to guarantee consistent, cross-platform ordering.
+4. Path exclusion filters (like `.gitignore` rules and config ignores) are matched against cached pre-compiled regex translations of glob patterns, achieving constant-time lookup.
+5. Filtered files are compiled into a deterministic list of `FileTask` objects, each carrying its file size and classification (`text`, `docx`, `doc`, or `other_text`).
 
 ### 2.2 Phase 2: Parallel Text Merging & Streaming
 When merging plain text:
