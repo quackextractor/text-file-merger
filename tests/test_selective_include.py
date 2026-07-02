@@ -26,7 +26,6 @@ def test_collect_files_with_include_list_recursive(tmp_path):
         ignore_set=set(),
         ignored_ext_tuple=(),
         ignored_files=set(),
-        skip_css=False,
         include_list=include_list
     )
 
@@ -52,7 +51,6 @@ def test_collect_files_with_include_list_flat(tmp_path):
         ignore_set=set(),
         ignored_ext_tuple=(),
         ignored_files=set(),
-        skip_css=False,
         include_list=include_list
     )
 
@@ -75,8 +73,7 @@ def test_merge_files_with_include_list(tmp_path, mocker):
         "output_dir": str(out_dir),
         "ignored_dirs": [],
         "ignored_extensions": [],
-        "ignored_files": [],
-        "skip_css_if_no_ext": False
+        "ignored_files": []
     }
     mocker.patch("src.merger.load_config", return_value=mock_conf)
 

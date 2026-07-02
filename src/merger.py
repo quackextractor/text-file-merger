@@ -551,7 +551,6 @@ def merge_files(
         out_path = os.path.join(out_dir, os.path.basename(raw_out_path))
 
         ignore_set, ignored_ext_tuple, ignored_files = _get_ignore_config(config, ignore_dirs, ignore_exts)
-        skip_css = config.get("skip_css_if_no_ext", True)
         git_filter = GitIgnoreFilter(directory) if use_gitignore else None
 
         if tasks is None:
@@ -563,7 +562,6 @@ def merge_files(
                 ignore_set=ignore_set,
                 ignored_ext_tuple=ignored_ext_tuple,
                 ignored_files=ignored_files,
-                skip_css=skip_css,
                 git_filter=git_filter,
                 include_list=include_list
             )

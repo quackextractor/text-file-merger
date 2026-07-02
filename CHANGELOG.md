@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 ### Added
 * **Selective Include Mode**: Added selective include filter (`--include` in CLI, "Selective Mode" checkbox/input in GUI) to allow merging only specified files by their relative paths.
 * **Scrollable GUI Container**: Upgraded the main GUI container to a `CTkScrollableFrame` to permanently prevent window overflow.
+### Removed
+* **Redundant skip_css Option**: Removed dedicated `skip_css_if_no_ext` config option, checkbox, and collector parameter, as extension filtering is fully configurable in Settings.
 
 ## [1.6.1] - 2026-06-25
 ### Added

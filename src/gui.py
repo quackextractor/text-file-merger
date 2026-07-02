@@ -14,7 +14,7 @@ except ImportError:
     TkinterDnD = None
 
 from src.config import load_config
-from src.filters import GitIgnoreFilter, _get_ignore_config, _is_file_included
+from src.filters import GitIgnoreFilter, _get_ignore_config
 from src.merger import merge_files
 from src.pdf_utils import PDF_SUPPORT
 
@@ -195,11 +195,6 @@ class MergeApp:
         git_chk = ctk.CTkCheckBox(content, text="Use .gitignore rules", variable=self.gitignore_var)
         git_chk.pack(anchor=tk.W, pady=(0, 5))
         Tooltip(git_chk, "Automatically read and apply .gitignore files found in directories")
-
-        self.skip_css_var = tk.BooleanVar(value=self.config.get("skip_css_if_no_ext", True))
-        skip_css_chk = ctk.CTkCheckBox(content, text="Skip CSS files when no target ext.", variable=self.skip_css_var)
-        skip_css_chk.pack(anchor=tk.W, pady=(0, 5))
-        Tooltip(skip_css_chk, "If checked, .css files are ignored unless a specific extension filter is set.")
 
         self.is_git_var = tk.BooleanVar(value=False)
         self.is_git_var.trace_add("write", self.on_git_toggle)
@@ -505,7 +500,6 @@ class MergeApp:
             # If it's a local folder, pre-collect tasks to know progress.
             if not is_git:
                 ignore_set, ignored_ext_tuple, ignored_files = _get_ignore_config(self.config, None, None)
-                skip_css = self.skip_css_var.get()
                 git_filter = GitIgnoreFilter(directory) if use_gitignore else None
 
                 from src.collector import collect_files
@@ -516,7 +510,6 @@ class MergeApp:
                     ignore_set=ignore_set,
                     ignored_ext_tuple=ignored_ext_tuple,
                     ignored_files=ignored_files,
-                    skip_css=skip_css,
                     git_filter=git_filter,
                     include_list=include_list
                 )

@@ -19,7 +19,6 @@ def base_config():
         "ignored_dirs": ["node_modules", ".git"],
         "ignored_files": ["package-lock.json"],
         "ignored_extensions": [".png", ".jpg"],
-        "skip_css_if_no_ext": True,
         "use_gitignore": True
     }
 
@@ -48,21 +47,21 @@ def test_load_config_with_file(mocker):
 # Filtering Logic Tests
 
 
-@pytest.mark.parametrize("filename, ext, skip_css, expected", [
-    ("script.py", ".py", False, True),
-    ("image.png", None, False, False),       # Ignored extension
-    ("style.css", None, True, False),        # skip_css_if_no_ext is True
-    ("style.css", ".css", True, True),       # Target extension specified
-    ("package-lock.json", None, False, False)  # Ignored file
+@pytest.mark.parametrize("filename, ext, expected", [
+    ("script.py", ".py", True),
+    ("image.png", None, False),       # Ignored extension
+    ("style.css", None, True),
+    ("style.css", ".css", True),       # Target extension specified
+    ("package-lock.json", None, False)  # Ignored file
 ])
-def test_is_file_included(filename, ext, skip_css, expected):
+def test_is_file_included(filename, ext, expected):
     ignore_set = {"node_modules"}
     ignored_ext_set = {".png", ".jpg"}
     ignored_files = {"package-lock.json"}
 
     result = _is_file_included(
         filename, "root", "root", ext,
-        ignore_set, ignored_ext_set, ignored_files, skip_css
+        ignore_set, ignored_ext_set, ignored_files
     )
     assert result == expected
 
@@ -103,8 +102,7 @@ def test_merge_files_execution(tmp_path, mocker):
         "output_dir": str(out_dir),
         "ignored_dirs": [],
         "ignored_extensions": [],
-        "ignored_files": [],
-        "skip_css_if_no_ext": False
+        "ignored_files": []
     }
     mocker.patch("src.merger.load_config", return_value=mock_conf)
 
@@ -130,12 +128,12 @@ def test_collect_files(tmp_path):
     sub.mkdir()
     (sub / "fileC.txt").write_text("C")
 
-    tasks_flat = collect_files(str(d), extension=None, recursive=False, ignore_set=set(), ignored_ext_tuple=(), ignored_files=set(), skip_css=False)
+    tasks_flat = collect_files(str(d), extension=None, recursive=False, ignore_set=set(), ignored_ext_tuple=(), ignored_files=set())
     assert len(tasks_flat) == 2
     assert tasks_flat[0].display_name == "fileA.txt"
     assert tasks_flat[1].display_name == "fileB.txt"
 
-    tasks_rec = collect_files(str(d), extension=None, recursive=True, ignore_set=set(), ignored_ext_tuple=(), ignored_files=set(), skip_css=False)
+    tasks_rec = collect_files(str(d), extension=None, recursive=True, ignore_set=set(), ignored_ext_tuple=(), ignored_files=set())
     assert len(tasks_rec) == 3
     assert tasks_rec[0].display_name == "fileA.txt"
     assert tasks_rec[1].display_name == "fileB.txt"
@@ -177,7 +175,6 @@ def test_parallel_merge_equivalence(tmp_path, mocker):
         "ignored_dirs": [],
         "ignored_extensions": [],
         "ignored_files": [],
-        "skip_css_if_no_ext": False,
         "performance": {
             "min_tasks_for_parallel": 5,
             "max_workers": 2,
@@ -194,7 +191,6 @@ def test_parallel_merge_equivalence(tmp_path, mocker):
         "ignored_dirs": [],
         "ignored_extensions": [],
         "ignored_files": [],
-        "skip_css_if_no_ext": False,
         "performance": {
             "min_tasks_for_parallel": 50,
             "max_workers": 2,
@@ -230,8 +226,7 @@ def test_atomic_output_and_cancellation(tmp_path, mocker):
         "output_dir": str(out_dir),
         "ignored_dirs": [],
         "ignored_extensions": [],
-        "ignored_files": [],
-        "skip_css_if_no_ext": False
+        "ignored_files": []
     }
     mocker.patch("src.merger.load_config", return_value=mock_conf)
 

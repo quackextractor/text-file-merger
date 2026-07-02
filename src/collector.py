@@ -19,7 +19,6 @@ def collect_files(
     ignore_set: Set[str],
     ignored_ext_tuple: tuple,
     ignored_files: Set[str],
-    skip_css: bool,
     git_filter=None,
     include_list: Optional[List[str]] = None
 ) -> List[FileTask]:
@@ -58,9 +57,6 @@ def collect_files(
 
                 lower_name = file.lower()
                 if lower_name.endswith(ignored_ext_tuple):
-                    continue
-
-                if extension is None and skip_css and lower_name.endswith('.css'):
                     continue
 
                 if extension is not None and not lower_name.endswith(extension):
@@ -121,9 +117,6 @@ def collect_files(
 
             lower_name = entry.lower()
             if lower_name.endswith(ignored_ext_tuple):
-                continue
-
-            if extension is None and skip_css and lower_name.endswith('.css'):
                 continue
 
             if extension is not None and not lower_name.endswith(extension):

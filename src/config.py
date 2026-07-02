@@ -34,7 +34,6 @@ def get_bundled_config():
             ".pdf", ".zip", ".tar", ".gz", ".rar", ".svg",
             ".log", ".sln"
         ],
-        "skip_css_if_no_ext": True,
         "use_gitignore": True,
         "include_tree": True,
         "performance": {

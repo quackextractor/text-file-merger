@@ -108,7 +108,7 @@ def _get_ignore_config(config, ignore_dirs, ignore_exts):
     return ignore_set, ignored_ext_tuple, ignored_files
 
 
-def _is_file_included(filename, root, directory, extension, ignore_set, ignored_ext_tuple, ignored_files, skip_css):
+def _is_file_included(filename, root, directory, extension, ignore_set, ignored_ext_tuple, ignored_files):
     if filename in ignored_files:
         return False
 
@@ -117,9 +117,6 @@ def _is_file_included(filename, root, directory, extension, ignore_set, ignored_
 
     lower = filename.lower()
     if lower.endswith(ignored_ext_tuple):
-        return False
-
-    if extension is None and skip_css and lower.endswith('.css'):
         return False
 
     if extension is not None and not lower.endswith(extension):

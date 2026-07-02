@@ -111,7 +111,6 @@ def test_merge_files_with_tree(tmp_path, mocker):
         "ignored_dirs": [],
         "ignored_extensions": [],
         "ignored_files": [],
-        "skip_css_if_no_ext": False,
         "include_tree": True
     }
     mocker.patch("src.merger.load_config", return_value=mock_conf)
@@ -159,7 +158,6 @@ def test_merge_files_git_integration(mock_clone, tmp_path, mocker):
         "ignored_dirs": [],
         "ignored_extensions": [],
         "ignored_files": [],
-        "skip_css_if_no_ext": False,
         "include_tree": True
     }
     mocker.patch("src.merger.load_config", return_value=mock_conf)
@@ -195,7 +193,6 @@ def test_merge_files_dry_run_token_count(tmp_path, mocker):
         "ignored_dirs": [],
         "ignored_extensions": [],
         "ignored_files": [],
-        "skip_css_if_no_ext": False,
         "include_tree": False
     }
     mocker.patch("src.merger.load_config", return_value=mock_conf)
