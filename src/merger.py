@@ -589,17 +589,17 @@ def merge_files(
             else:
                 from src.collector import collect_files
                 if tree_ignore_level == "extension":
-                    t_ignore_set = ignore_set
+                    t_ignore_set = ignore_set | {".git"}
                     t_ignored_ext_tuple = ignored_ext_tuple
                     t_ignored_files = ignored_files
                     t_extension = extension
                 elif tree_ignore_level == "settings":
-                    t_ignore_set = ignore_set
+                    t_ignore_set = ignore_set | {".git"}
                     t_ignored_ext_tuple = ignored_ext_tuple
                     t_ignored_files = ignored_files
                     t_extension = None
                 else:  # "none" or default
-                    t_ignore_set = set()
+                    t_ignore_set = {".git"}
                     t_ignored_ext_tuple = ()
                     t_ignored_files = set()
                     t_extension = None

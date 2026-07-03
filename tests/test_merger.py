@@ -251,6 +251,11 @@ def test_tree_ignore_levels(tmp_path, mocker):
 
     (src_dir / "ignored_file.txt").write_text("Four")
 
+    # Create a dummy .git directory to verify it is ignored by default
+    git_dir = src_dir / ".git"
+    git_dir.mkdir()
+    (git_dir / "config").write_text("git-config")
+
     out_dir = tmp_path / "out"
 
     mock_conf = {
@@ -273,6 +278,8 @@ def test_tree_ignore_levels(tmp_path, mocker):
     assert "ignored_dir" in tree_str
     assert "file3.txt" in tree_str
     assert "ignored_file.txt" in tree_str
+    assert ".git" not in tree_str
+    assert "git-config" not in tree_str
 
     # 2. settings
     res = merge_files(str(src_dir), output_file="merged_settings.txt", use_gitignore=False, tree_ignore_level="settings", recursive=True)
@@ -282,6 +289,7 @@ def test_tree_ignore_levels(tmp_path, mocker):
     assert "file2.py" not in tree_str
     assert "ignored_dir" not in tree_str
     assert "ignored_file.txt" not in tree_str
+    assert ".git" not in tree_str
 
     # 3. extension
     res = merge_files(str(src_dir), extension="txt", output_file="merged_ext.txt", use_gitignore=False, tree_ignore_level="extension", recursive=True)
@@ -291,6 +299,7 @@ def test_tree_ignore_levels(tmp_path, mocker):
     assert "file2.py" not in tree_str
     assert "ignored_dir" not in tree_str
     assert "ignored_file.txt" not in tree_str
+    assert ".git" not in tree_str
 
     # 4. all
     res = merge_files(str(src_dir), output_file="merged_all.txt", use_gitignore=False, tree_ignore_level="all", include_list=["file1.txt"], recursive=True)
@@ -300,3 +309,4 @@ def test_tree_ignore_levels(tmp_path, mocker):
     assert "file2.py" not in tree_str
     assert "ignored_dir" not in tree_str
     assert "ignored_file.txt" not in tree_str
+    assert ".git" not in tree_str
